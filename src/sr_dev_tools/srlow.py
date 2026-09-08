@@ -66,8 +66,8 @@ def safe_rmdir(path: Path) -> bool:
     shutil.rmtree(path)
     return True
 
-def configure_and_build(module_root: Path, preset: str) -> Result:
-    """Configures and builds in module root using STM32 presets"""
+def configure_and_build(module_root: Path, preset: str, repo_root: Path) -> Result:
+    """Configures, builds and installs a module using STM32 presets"""
     print(f"----------Building {module_root.name}----------")
     if not (module_root/"CMakeLists.txt").is_file():
         print(f"[srlow] Build: {module_root.name} doesn't have a CMakeLists.txt")
@@ -85,6 +85,11 @@ def configure_and_build(module_root: Path, preset: str) -> Result:
         )
         subprocess.run(
             ["cmake", "--build", "--preset", preset],
+            cwd=module_root,
+            check=True
+        )
+        subprocess.run(
+            ["cmake", "--install", "build", "--prefix", str(repo_root / INSTALL_FOLDER_NAME)],
             cwd=module_root,
             check=True
         )
@@ -175,7 +180,7 @@ def run_over_modules(
 def build(targets: Optional[list[str]], repo_root: Path, preset: str) -> int:
     """Build every src/ module. Returns the number of failures."""
     return run_over_modules(
-        "Build", targets, repo_root, lambda m: configure_and_build(m, preset)
+        "Build", targets, repo_root, lambda m: configure_and_build(m, preset, repo_root)
     )
 
 
