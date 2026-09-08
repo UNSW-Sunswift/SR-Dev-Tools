@@ -89,7 +89,7 @@ def configure_and_build(module_root: Path, preset: str) -> Result:
             check=True
         )
         return Result.PASS
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"[srlow] Build: Error building - {e}")
         return Result.FAIL
 
@@ -108,7 +108,7 @@ def test_one(module_root: Path) -> Result:
             check=True,
         )
         return Result.PASS
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"[srlow] Test: Testing failed - {e}")
         return Result.FAIL
 
@@ -186,7 +186,7 @@ def test(targets: Optional[list[str]], repo_root: Path) -> int:
 
 def clean(repo_root: Path) -> None:
     """loop through all src/*/. For those with a build/ directory, delete it"""
-    res = input("[srlow] Would you like to clean all build/ directories? (y/n)")
+    res = input("[srlow] Would you like to clean all build/ directories? (y/n): ")
     if res != "y":
         print("[srlow] Cancelling clean..")
         return
