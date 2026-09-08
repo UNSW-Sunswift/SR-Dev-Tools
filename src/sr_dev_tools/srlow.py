@@ -1,4 +1,4 @@
-#!/user/bin/env python3
+#!/usr/bin/env python3
 
 ###############################################################################
 # Sunswift low level build and test tool
@@ -17,11 +17,20 @@
 
 import argparse
 import subprocess
+import sys
 import time
 import shutil
-from typing import Optional
+from enum import Enum
+from typing import Callable, Optional
 from pathlib import Path
 from sr_dev_tools.common_helpers import die, find_repo_root
+
+
+class Result(Enum):
+    """Outcome of building or testing a single module."""
+    PASS = "pass"
+    FAIL = "fail"
+    SKIP = "skip"
 
 # =================================================================================================
 # CONSTANTS
@@ -57,18 +66,16 @@ def safe_rmdir(path: Path) -> bool:
     shutil.rmtree(path)
     return True
 
-def configure_and_build(module_root: Path, preset: str) -> bool:
+def configure_and_build(module_root: Path, preset: str) -> Result:
     """Configures and builds in module root using STM32 presets"""
     print(f"----------Building {module_root.name}----------")
-    if not ((module_root/"CMakeLists.txt").exists() and (module_root/"CMakeLists.txt").is_file()):
-        # No CMakeLists in given path
-        print(f"[srlow] Module: {module_root.name} doesn't have a CMakeLists.txt, skipping...")
-        return False
+    if not (module_root/"CMakeLists.txt").is_file():
+        print(f"[srlow] Build: {module_root.name} doesn't have a CMakeLists.txt")
+        return Result.FAIL
 
-    if not ((module_root/"CMakePresets.json").exists() and (module_root/"CMakePresets.json").is_file()):
-        print(f"[srlow] Module: {module_root.name} doesn't have a CMakePresets.json, skipping...")
-        return False
-    
+    if not (module_root/"CMakePresets.json").is_file():
+        print(f"[srlow] Build: {module_root.name} doesn't have a CMakePresets.json")
+        return Result.FAIL
     # Configure and build
     try:
         subprocess.run(
@@ -81,64 +88,108 @@ def configure_and_build(module_root: Path, preset: str) -> bool:
             cwd=module_root,
             check=True
         )
-        return True
+        return Result.PASS
     except subprocess.CalledProcessError as e:
         print(f"[srlow] Build: Error building - {e}")
-        return False
+        return Result.FAIL
+
+
+def test_one(module_root: Path) -> Result:
+    """Runs ceedling in module_root/Test"""
+    print(f"----------Testing {module_root.name}----------")
+    if not (module_root/"Test").is_dir():
+        print(f"[srlow] Test: {module_root.name} doesn't have a Test folder, skipping...")
+        return Result.SKIP
+
+    try:
+        subprocess.run(
+            ["ceedling", "test:all", "gcov:all", "valgrind:all"],
+            cwd=module_root/"Test",
+            check=True,
+        )
+        return Result.PASS
+    except subprocess.CalledProcessError as e:
+        print(f"[srlow] Test: Testing failed - {e}")
+        return Result.FAIL
+
+
+def run_over_modules(
+    label: str,
+    targets: Optional[list[str]],
+    repo_root: Path,
+    run_one: Callable[[Path], Result],
+) -> int:
+    """Run `run_one` over every src/ module, tally results.
+    Returns the number of FAIL results.
+    """
+    print(f"============= {label}ing Targets ===============")
+    start_time = time.time()
+
+    src_dir = repo_root/SRC_DIR
+    modules = []
+    num_pass = []
+    num_fail = []
+    missing = []
+    
+    
+    # figure out which modules to include
+    if targets is None:
+        modules = [d.name for d in src_dir.iterdir() if d.is_dir()]
+    else:
+        dir_names = [d.name for d in (repo_root/SRC_DIR).iterdir() if d.is_dir()]
+        modules = [t for t in targets if t in dir_names]
+        missing = [t for t in targets if t not in modules] 
+    
+    for module in modules:
+        full_path = repo_root/SRC_DIR/module
+        if full_path.is_dir():
+            retval = run_one(full_path)
+            if retval == Result.PASS:
+                num_pass.append(module)
+            elif retval == Result.FAIL:
+                num_fail.append(module)
+            print("")
+
+    if len(missing) != 0:
+        print("================= Missing ====================")
+        print(f"[srlow] {label}: The following targets don't exist:")
+        for t in missing:
+            print(f"[srlow]   - {t}")
+
+    print(f"============== {label}ing Complete ================")
+    print(f"[srlow] {label} finished in {time.time()-start_time:.4f} seconds")
+    print(f"[srlow] {label}: Number passed - {len(num_pass)}")
+    for t in num_pass:
+        print(f"[srlow]   - {t}")
+    print(f"[srlow] {label}: Number failed - {len(num_fail)}")
+    for t in num_fail:
+        print(f"[srlow]   - {t}")
+
+    return len(num_fail) + len(missing)
+
 
 # =================================================================================================
 # CORE LOGIC
 # =================================================================================================
 
-def build(targets: Optional[list[str]], repo_root: Path, preset: str) -> None:
-    """loop through all src/*/. For those with CMakeLists.txt, configure, build and install"""
-    print("============= Building Targets ===============")
-    start_time = time.time()
-    
-    num_pass = []
-    num_fail = []
-    if targets is None:
-        for module in (repo_root/SRC_DIR).iterdir():
-            if module.is_dir():
-                if configure_and_build(module, preset):
-                    num_pass.append(module.name)
-                else:
-                    num_fail.append(module.name)
-                print("")
-    else:
-        available = [d.name for d in (repo_root/SRC_DIR).iterdir() if d.is_dir()]
-        exists = [t for t in targets if t in available]
-        missing = [t for t in targets if t not in exists] 
-        
-        for module in exists:
-            full_path = repo_root/SRC_DIR/module
-            if configure_and_build(full_path, preset):
-                num_pass.append(full_path.name)
-            else:
-                num_fail.append(full_path.name)
-            print("")
-            
-        if len(missing) != 0:
-            print("================= Missing ====================")
-            print(f"[srlow] Build: The following targets are missing:")
-            for t in missing:
-                print(f"[srlow]   - {t}")
-    
-    print("============== Build Complete ================")
-    end_time = time.time()
-    print(f"[srlow] Build finished in {end_time-start_time:.4f} seconds")
-    print(f"[srlow] Build: Number passed - {len(num_pass)}")
-    for t in num_pass:
-        print(f"[srlow]   - {t}")
-    print(f"[srlow] Build: Number failed - {len(num_fail)}")
-    for t in num_fail:
-        print(f"[srlow]   - {t}")
+def build(targets: Optional[list[str]], repo_root: Path, preset: str) -> int:
+    """Build every src/ module. Returns the number of failures."""
+    return run_over_modules(
+        "Build", targets, repo_root, lambda m: configure_and_build(m, preset)
+    )
+
+
+def test(targets: Optional[list[str]], repo_root: Path) -> int:
+    """Test every src/ module. Returns the number of failures."""
+    return run_over_modules("Test", targets, repo_root, test_one)
+
 
 def clean(repo_root: Path) -> None:
     """loop through all src/*/. For those with a build/ directory, delete it"""
     res = input("[srlow] Would you like to clean all build/ directories? (y/n)")
     if res != "y":
-        die("[srbuild] Cancelling clean..")
+        print("[srlow] Cancelling clean..")
+        return
     print("============= Cleaning Targets ================")
 
     num_pass = []
@@ -164,9 +215,6 @@ def clean(repo_root: Path) -> None:
     print(f"[srlow] Clean: Number failed - {len(num_fail)}")
     for t in num_fail:
         print(f"[srlow]   - {t}")
-
-def test():
-    pass
 
 def parse_args() -> argparse.Namespace:
     """Construct parser and return arguments."""
@@ -198,24 +246,30 @@ def parse_args() -> argparse.Namespace:
     test_target.add_argument("targets", nargs="+", help="One or more module names")
     return parser.parse_args()
 
-def main():
+# =================================================================================================
+# MAIN
+# =================================================================================================
+def main() -> int:
     repo_root = find_repo_root(CWD, MARKER_FILE)
-    if not (repo_root/SRC_DIR).exists() or not (repo_root/SRC_DIR).is_dir():
+    if not (repo_root/SRC_DIR).is_dir():
         die(f"[srlow] src directory not found in {repo_root}")
     args = parse_args()
-    
+
+    failures = 0
     if args.command == "build":
         if args.build_action == "all":
-            build(None, repo_root, args.preset)
+            failures = build(None, repo_root, args.preset)
         elif args.build_action == "clean":
             clean(repo_root)
         elif args.build_action == "target":
-            build(args.targets, repo_root, args.preset)
+            failures = build(args.targets, repo_root, args.preset)
     elif args.command == "test":
         if args.test_action == "all":
-            print("test all!")
+            failures = test(None, repo_root)
         elif args.test_action == "target":
-            print(args.targets)
-    
+            failures = test(args.targets, repo_root)
+
+    return 1 if failures else 0
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
