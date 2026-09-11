@@ -127,8 +127,8 @@ def resolve_analyse_globs(analyse_txt: Path, module_root: Path) -> Path:
     resolved: list[str] = []
 
     for lineno, raw_line in enumerate(analyse_txt.read_text().splitlines(), start=1):
-        pattern = raw_line.strip()
-        if not pattern or pattern.startswith("#"):
+        pattern = raw_line.split("#", 1)[0].strip()
+        if not pattern:
             continue
 
         try:
