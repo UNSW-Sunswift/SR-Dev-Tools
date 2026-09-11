@@ -125,7 +125,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
     """Runs a bunch of und commands to setup and execute CodeCheck"""
     print_box(f"Analysing {module_root.name}")
     if not (module_root/"analyse.txt").is_file():
-        print(f"[srlow] No analyse file found, skipping...")
+        print(f"[srlow] No analyse.txt file found, skipping...")
         return Result.SKIP
     
     try:
@@ -240,6 +240,19 @@ def test(targets: Optional[list[str]], repo_root: Path) -> int:
 
 def analyse(targets: Optional[list[str]], repo_root: Path, preset: str) -> int:
     """Run Understand CodeCheck on every module in src/ or given targets"""
+    # Check if UND_CONFIG_FILE exists and und is licensed
+    if not (repo_root/UND_CONFIG_FILE).is_file():
+        print(f"[srlow] Analyse: {str(repo_root/UND_CONFIG_FILE)} not found")
+        return 1
+    try:
+        subprocess.run(
+            ["und", "-isundlicensed"],
+            cwd=repo_root,
+            check=True
+        )
+    except Exception as e:
+        print(f"Scitools Understand is probably not licensed or installed")
+        return 1
     return run_over_modules("Analyse", targets, repo_root, lambda m: analyse_one(m, preset, repo_root))
 
 def clean(repo_root: Path) -> None:
