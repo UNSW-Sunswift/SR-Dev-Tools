@@ -224,10 +224,10 @@ def run_over_modules(
     print(f"[srlow] {label} finished in {time.time()-start_time:.4f} seconds")
     print(f"[srlow] {label}: Number passed - {len(num_pass)}")
     for t in num_pass:
-        print(f"[srlow]   - {t}")
+        print(f"[srlow]   {t} - PASS")
     print(f"[srlow] {label}: Number failed - {len(num_fail)}")
     for t in num_fail:
-        print(f"[srlow]   - {t}")
+        print(f"[srlow]   {t} - FAIL")
 
     return len(num_fail) + len(missing)
 
