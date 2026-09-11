@@ -89,7 +89,7 @@ def configure_and_build(module_root: Path, preset: str, repo_root: Path) -> Resu
             check=True
         )
         subprocess.run(
-            ["cmake", "--install", f"{preset}/build", "--prefix", str(repo_root / INSTALL_FOLDER_NAME)],
+            ["cmake", "--install", f"build/{preset}", "--prefix", str(repo_root / INSTALL_FOLDER_NAME)],
             cwd=module_root,
             check=True
         )
