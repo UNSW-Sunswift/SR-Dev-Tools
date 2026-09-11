@@ -55,7 +55,7 @@ def test_fails_without_marker(tmp_path: Path) -> None:
     (tmp_path / "CMakeLists.txt").touch()
     r = run("all", "--linux", cwd=tmp_path)
     assert r.returncode != 0
-    assert "sunswift-evsn" in r.stdout
+    assert "sunswift-evsn" in r.stderr
 
 def test_uses_marker_root_from_subdirectory(configured_repo: Path) -> None:
     """Running from a subdirectory of a marker-containing repo should resolve root correctly."""
