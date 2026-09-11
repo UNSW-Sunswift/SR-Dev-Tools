@@ -66,9 +66,16 @@ def safe_rmdir(path: Path) -> bool:
     shutil.rmtree(path)
     return True
 
+def print_box(text: str, width: int = 60, ch: str = "-") -> None:
+    """Print `text` centred inside a bordered box `width` characters wide."""
+    print(ch * width)
+    print(f"{text}".center(width))
+    print(ch * width)
+
+
 def configure_and_build(module_root: Path, preset: str, repo_root: Path) -> Result:
     """Configures, builds and installs a module using STM32 presets"""
-    print(f"----------Building {module_root.name}----------")
+    print_box(f"Building {module_root.name}")
     if not (module_root/"CMakeLists.txt").is_file():
         print(f"[srlow] Build: {module_root.name} doesn't have a CMakeLists.txt")
         return Result.FAIL
@@ -101,7 +108,7 @@ def configure_and_build(module_root: Path, preset: str, repo_root: Path) -> Resu
 
 def test_one(module_root: Path) -> Result:
     """Runs ceedling in module_root/Test"""
-    print(f"----------Testing {module_root.name}----------")
+    print_box(f"Testing {module_root.name}")
     if not (module_root/"Test").is_dir():
         print(f"[srlow] Test: {module_root.name} doesn't have a Test folder, skipping...")
         return Result.SKIP
@@ -127,7 +134,7 @@ def run_over_modules(
     """Run `run_one` over every src/ module, tally results.
     Returns the number of FAIL results.
     """
-    print(f"============= {label}ing Targets ===============")
+    print_box(f"{label}ing Targets", width=60, ch="=")
     start_time = time.time()
 
     src_dir = repo_root/SRC_DIR
@@ -153,15 +160,16 @@ def run_over_modules(
                 num_pass.append(module)
             elif retval == Result.FAIL:
                 num_fail.append(module)
-            print("")
+            print()
 
     if len(missing) != 0:
-        print("================= Missing ====================")
+        print()
+        print_box("Missing", width=60, ch="=")
         print(f"[srlow] {label}: The following targets don't exist:")
         for t in missing:
             print(f"[srlow]   - {t}")
-
-    print(f"============== {label}ing Complete ================")
+    print()
+    print_box(f"{label}ing Complete", width=60, ch="=")
     print(f"[srlow] {label} finished in {time.time()-start_time:.4f} seconds")
     print(f"[srlow] {label}: Number passed - {len(num_pass)}")
     for t in num_pass:
@@ -195,7 +203,7 @@ def clean(repo_root: Path) -> None:
     if res != "y":
         print("[srlow] Cancelling clean..")
         return
-    print("============= Cleaning Targets ================")
+    print_box("Cleaning Targets", width=60, ch="=")
 
     num_pass = []
     num_fail = []
@@ -212,8 +220,10 @@ def clean(repo_root: Path) -> None:
             num_pass.append(module.name)
         else:
             num_fail.append(module.name)
+        print()
 
-    print("============== Clean Complete =================")
+    print()
+    print_box("Clean Complete", width=60, ch="=")
     print(f"[srlow] Clean: Number removed - {len(num_pass)}")
     for t in num_pass:
         print(f"[srlow]   - {t}")
