@@ -308,8 +308,8 @@ def parse_args() -> argparse.Namespace:
     # srlow analyse...
     command_analyse = level1_junction.add_parser("analyse", help="Run Scitools und CodeCheck on all or specific modules")
     analyse_sub = command_analyse.add_subparsers(dest="analyse_action", required=True)
-    analyse_sub.add_parser("all", help="Analyse all modules")
-    analyse_target = analyse_sub.add_parser("target", help="Analyse specific modules")
+    analyse_sub.add_parser("all", parents=[build_common], help="Analyse all modules")
+    analyse_target = analyse_sub.add_parser("target", parents=[build_common], help="Analyse specific modules")
     analyse_target.add_argument("targets", nargs="+", help="One or more module names")
     
     return parser.parse_args()
