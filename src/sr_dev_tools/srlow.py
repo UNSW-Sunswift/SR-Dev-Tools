@@ -144,7 +144,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
             cwd=module_root,
             check=True
         )
-        output_dir_name = {module_root.name}
+        output_dir_name = module_root.name
         subprocess.run(
             [
                 "und", 
