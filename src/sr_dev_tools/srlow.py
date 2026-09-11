@@ -132,7 +132,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
         print(f"[srlow] No build dir, please build first")
         return Result.SKIP
     
-    if not (module_root/"build"/preset).is_file():
+    if not (module_root/"build"/preset).is_dir():
         print(f"[srlow] Preset: {preset} was not found in {module_root}/build/")    
         return Result.SKIP    
     
