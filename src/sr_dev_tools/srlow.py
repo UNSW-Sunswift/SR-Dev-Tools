@@ -152,7 +152,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
             cwd=module_root,
             check=True
         )
-        output_dir_name = module_root.name
+        output_dir_name = f"{module_root.name}_analysis"
         subprocess.run(
             [
                 "und", 
@@ -162,7 +162,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
                 "-files", 
                 "./analyse.txt", 
                 "-sarif", 
-                f"{output_dir_name}/{module_root.name}_codecheck.sarif", 
+                f"{output_dir_name}/{module_root.name}_analysis.sarif", 
                 "-exitstatus", 
                 f"{str(repo_root/UND_CONFIG_FILE)}", 
                 f"./{output_dir_name}"
