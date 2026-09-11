@@ -18,6 +18,7 @@
 ###############################################################################
 
 import argparse
+import logging
 import subprocess
 import sys
 import time
@@ -26,7 +27,9 @@ import tempfile
 from enum import Enum
 from typing import Callable, Optional
 from pathlib import Path
-from sr_dev_tools.common_helpers import die, find_repo_root, print_box
+from sr_dev_tools.common_helpers import die, find_repo_root, print_box, setup_logging
+
+logger = logging.getLogger("srlow")
 
 
 class Result(Enum):
@@ -52,19 +55,19 @@ def safe_rmdir(path: Path) -> bool:
     """Meant to safely delete a build directory during srlow build clean"""
 
     if not path.exists():
-        print("[srlow] Clean: Path does not exist")
+        logger.error("Clean: Path does not exist")
         return False
 
     if not path.is_dir():
-        print("[srlow] Clean: Path is not a directory")
+        logger.error("Clean: Path is not a directory")
         return False
 
     if path.is_symlink():
-        print("[srlow] Clean: Path is a symlink")
+        logger.error("Clean: Path is a symlink")
         return False
 
     if path.name != "build":
-        print("[srlow] Clean: Are you deleting a build directory?")
+        logger.error("Clean: Are you deleting a build directory?")
         return False
         
     shutil.rmtree(path)
@@ -74,11 +77,11 @@ def configure_and_build(module_root: Path, preset: str, repo_root: Path) -> Resu
     """Configures, builds and installs a module using STM32 presets"""
     print_box(f"Building {module_root.name}")
     if not (module_root/"CMakeLists.txt").is_file():
-        print(f"[srlow] Build: {module_root.name} doesn't have a CMakeLists.txt")
+        logger.warning(f"Build: {module_root.name} doesn't have a CMakeLists.txt")
         return Result.FAIL
 
     if not (module_root/"CMakePresets.json").is_file():
-        print(f"[srlow] Build: {module_root.name} doesn't have a CMakePresets.json")
+        logger.warning(f"Build: {module_root.name} doesn't have a CMakePresets.json")
         return Result.FAIL
     # Configure and build
     try:
@@ -99,7 +102,7 @@ def configure_and_build(module_root: Path, preset: str, repo_root: Path) -> Resu
         )
         return Result.PASS
     except Exception as e:
-        print(f"[srlow] Build: Error building - {e}")
+        logger.error(f"Build: Error building - {e}")
         return Result.FAIL
 
 
@@ -107,7 +110,7 @@ def test_one(module_root: Path) -> Result:
     """Runs ceedling in module_root/Test"""
     print_box(f"Testing {module_root.name}")
     if not (module_root/"Test").is_dir():
-        print(f"[srlow] Test: {module_root.name} doesn't have a Test folder, skipping...")
+        logger.warning(f"Test: {module_root.name} doesn't have a Test folder, skipping...")
         return Result.SKIP
 
     try:
@@ -118,7 +121,7 @@ def test_one(module_root: Path) -> Result:
         )
         return Result.PASS
     except Exception as e:
-        print(f"[srlow] Test: Testing failed - {e}")
+        logger.error(f"Test: Testing failed - {e}")
         return Result.FAIL
 
 
@@ -134,16 +137,16 @@ def resolve_analyse_globs(analyse_txt: Path, module_root: Path) -> Path:
         try:
             matches = sorted(module_root.glob(pattern))
         except Exception as e:
-            die(f"[srlow] Analyse: bad glob pattern on {analyse_txt}:{lineno}: '{pattern}' - {e}")
+            die(f"Analyse: bad glob pattern on {analyse_txt}:{lineno}: '{pattern}' - {e}")
 
         if not matches:
-            print(f"[srlow] Analyse: warning: glob pattern on {analyse_txt}:{lineno} matched no files: '{pattern}'")
+            logger.warning(f"Analyse: glob pattern on {analyse_txt}:{lineno} matched no files: '{pattern}'")
             continue
 
         resolved.extend(str(m.relative_to(module_root)) for m in matches if m.is_file())
 
     if not resolved:
-        die(f"[srlow] Analyse: {analyse_txt} resolved to no files")
+        die(f"Analyse: {analyse_txt} resolved to no files")
 
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
     tmp.write("\n".join(resolved) + "\n")
@@ -155,16 +158,16 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
     """Runs a bunch of und commands to setup and execute CodeCheck"""
     print_box(f"Analysing {module_root.name}")
     if not (module_root/"analyse.txt").is_file():
-        print(f"[srlow] No analyse.txt file found, skipping...")
+        logger.warning("No analyse.txt file found, skipping...")
         return Result.SKIP
-    
+
     if not (module_root/"build").is_dir():
-        print(f"[srlow] No build dir, please build first")
+        logger.warning("No build dir, please build first")
         return Result.SKIP
-    
+
     if not (module_root/"build"/preset).is_dir():
-        print(f"[srlow] Preset: {preset} was not found in {module_root}/build/")    
-        return Result.SKIP    
+        logger.warning(f"Preset: {preset} was not found in {module_root}/build/")
+        return Result.SKIP
     
     db = f"{module_root.name}.und"
     output_dir_name = f"{module_root.name}_analysis"
@@ -179,7 +182,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
         try:
             subprocess.run(cmd, cwd=module_root, check=True)
         except subprocess.CalledProcessError as e:
-            print(f"[srlow] und '{stage}' failed - {e}")
+            logger.error(f"und '{stage}' failed - {e}")
             return Result.FAIL
 
     # codecheck itself
@@ -203,10 +206,10 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
     if result.returncode == 0:
         return Result.PASS
     elif result.returncode > 0:
-        print(f"[srlow] Analyse: {result.returncode} violation(s) found failed")
+        logger.info(f"Analyse: {result.returncode} violation(s) found failed")
         return Result.FAIL
     else:
-        print(f"[srlow] Analyse: und codecheck crashed (exit {result.returncode})")
+        logger.error(f"Analyse: und codecheck crashed (exit {result.returncode})")
         return Result.FAIL
 
 
@@ -250,18 +253,18 @@ def run_over_modules(
     if len(missing) != 0:
         print()
         print_box("Missing", width=60, ch="=")
-        print(f"[srlow] {label}: The following targets don't exist:")
+        logger.info(f"{label}: The following targets don't exist:")
         for t in missing:
-            print(f"[srlow]   - {t}")
+            logger.info(f"  - {t}")
     print()
     print_box(f"{label} Complete", width=60, ch="=")
-    print(f"[srlow] {label} finished in {time.time()-start_time:.4f} seconds")
-    print(f"[srlow] {label}: Number passed - {len(num_pass)}")
+    logger.info(f"{label} finished in {time.time()-start_time:.4f} seconds")
+    logger.info(f"{label}: Number passed - {len(num_pass)}")
     for t in num_pass:
-        print(f"[srlow]   {t} - PASS")
-    print(f"[srlow] {label}: Number failed - {len(num_fail)}")
+        logger.info(f"  {t} - PASS")
+    logger.info(f"{label}: Number failed - {len(num_fail)}")
     for t in num_fail:
-        print(f"[srlow]   {t} - FAIL")
+        logger.info(f"  {t} - FAIL")
 
     return len(num_fail) + len(missing)
 
@@ -284,7 +287,7 @@ def analyse(targets: Optional[list[str]], repo_root: Path, preset: str) -> int:
     """Run Understand CodeCheck on every module in src/ or given targets"""
     # Check if UND_CONFIG_FILE exists and und is licensed
     if not (repo_root/UND_CONFIG_FILE).is_file():
-        print(f"[srlow] Analyse: {str(repo_root/UND_CONFIG_FILE)} not found")
+        logger.error(f"Analyse: {str(repo_root/UND_CONFIG_FILE)} not found")
         return 1
     try:
         subprocess.run(
@@ -295,8 +298,8 @@ def analyse(targets: Optional[list[str]], repo_root: Path, preset: str) -> int:
             stderr=subprocess.DEVNULL
         )
     except Exception as e:
-        print(f"[srlow] An error has occured: {e}")
-        print(f"[srlow] Scitools Understand is probably not licensed or installed")
+        logger.error(f"An error has occured: {e}")
+        logger.error("Scitools Understand is probably not licensed or installed")
         return 1
     return run_over_modules("Analyse", targets, repo_root, lambda m: analyse_one(m, preset, repo_root))
 
@@ -304,7 +307,7 @@ def clean(repo_root: Path) -> None:
     """loop through all src/*/. For those with a build/ directory, delete it"""
     res = input("[srlow] Would you like to clean all build/ directories? (y/n): ")
     if res != "y":
-        print("[srlow] Cancelling clean..")
+        logger.info("Cancelling clean..")
         return
     print_box("Cleaning Targets", width=60, ch="=")
 
@@ -318,7 +321,7 @@ def clean(repo_root: Path) -> None:
         if not build_dir.exists():
             continue
 
-        print(f"[srlow] Clean: Removing {module.name}/build")
+        logger.info(f"Clean: Removing {module.name}/build")
         if safe_rmdir(build_dir):
             num_pass.append(module.name)
         else:
@@ -327,12 +330,12 @@ def clean(repo_root: Path) -> None:
 
     print()
     print_box("Clean Complete", width=60, ch="=")
-    print(f"[srlow] Clean: Number removed - {len(num_pass)}")
+    logger.info(f"Clean: Number removed - {len(num_pass)}")
     for t in num_pass:
-        print(f"[srlow]   - {t}")
-    print(f"[srlow] Clean: Number failed - {len(num_fail)}")
+        logger.info(f"  - {t}")
+    logger.info(f"Clean: Number failed - {len(num_fail)}")
     for t in num_fail:
-        print(f"[srlow]   - {t}")
+        logger.info(f"  - {t}")
 
 def parse_args() -> argparse.Namespace:
     """Construct parser and return arguments."""
@@ -376,9 +379,10 @@ def parse_args() -> argparse.Namespace:
 # MAIN
 # =================================================================================================
 def main() -> int:
+    setup_logging("srlow")
     repo_root = find_repo_root(CWD, MARKER_FILE)
     if not (repo_root/SRC_DIR).is_dir():
-        die(f"[srlow] src directory not found in {repo_root}")
+        die(f"src directory not found in {repo_root}")
     args = parse_args()
 
     failures = 0
