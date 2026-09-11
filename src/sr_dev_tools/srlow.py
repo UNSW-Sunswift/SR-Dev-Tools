@@ -248,10 +248,13 @@ def analyse(targets: Optional[list[str]], repo_root: Path, preset: str) -> int:
         subprocess.run(
             ["und", "-isundlicensed"],
             cwd=repo_root,
-            check=True
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
     except Exception as e:
-        print(f"Scitools Understand is probably not licensed or installed")
+        print(f"[srlow] An error has occured: {e}")
+        print(f"[srlow] Scitools Understand is probably not licensed or installed")
         return 1
     return run_over_modules("Analyse", targets, repo_root, lambda m: analyse_one(m, preset, repo_root))
 
