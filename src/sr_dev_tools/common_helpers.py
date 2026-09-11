@@ -21,3 +21,9 @@ def find_repo_root(cwd: Path, marker_file: str) -> Path:
 def die(msg: str) -> NoReturn:
     print(msg)
     sys.exit(1)
+
+def print_box(text: str, width: int = 60, ch: str = "-") -> None:
+    """Print `text` centred inside a bordered box `width` characters wide."""
+    print(ch * width)
+    print(f"{text}".center(width))
+    print(ch * width)

@@ -23,7 +23,7 @@ import shutil
 from enum import Enum
 from typing import Callable, Optional
 from pathlib import Path
-from sr_dev_tools.common_helpers import die, find_repo_root
+from sr_dev_tools.common_helpers import die, find_repo_root, print_box
 
 
 class Result(Enum):
@@ -65,13 +65,6 @@ def safe_rmdir(path: Path) -> bool:
         
     shutil.rmtree(path)
     return True
-
-def print_box(text: str, width: int = 60, ch: str = "-") -> None:
-    """Print `text` centred inside a bordered box `width` characters wide."""
-    print(ch * width)
-    print(f"{text}".center(width))
-    print(ch * width)
-
 
 def configure_and_build(module_root: Path, preset: str, repo_root: Path) -> Result:
     """Configures, builds and installs a module using STM32 presets"""

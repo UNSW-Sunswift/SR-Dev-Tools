@@ -20,7 +20,7 @@ import shutil
 from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass
-from sr_dev_tools.common_helpers import die, find_repo_root
+from sr_dev_tools.common_helpers import die, find_repo_root, print_box
 
 # =================================================================================================
 # CONSTANTS
@@ -86,7 +86,7 @@ def configure_cmake(build_data: BuildData) -> None:
         build_data (BuildData)
     """
 
-    print("============ CMake Initialisation ============")
+    print_box("CMake Initialisation", width=60, ch="=")
     print(f"[srbuild] TARGET PLATFORM: {build_data.target_platform}")
     # CMakeLists.txt at build root MUST exist. Makes build dir if does not exist
     if not (build_data.cmakelists_path.exists() and build_data.cmakelists_path.is_file()):
@@ -129,7 +129,8 @@ def build(targets: Optional[list[str]], build_data: BuildData, jobs: int) -> Non
         build_data (BuildData)
         jobs (int): number of jobs to run in parallel
     """
-    print("============= Building Targets ===============")
+    print()
+    print_box("Building Targets", width=60, ch="=")
     jobs_str = f"{jobs}"
     start_time = time.time()
     # Build targets
@@ -150,7 +151,8 @@ def build(targets: Optional[list[str]], build_data: BuildData, jobs: int) -> Non
     except subprocess.CalledProcessError:
         die("[srbuild] Build: Error building targets")
 
-    print("=============== Build Complete =================")
+    print()
+    print_box("Build Complete", width=60, ch="=")
     end_time = time.time()
     print(f"[srbuild] Build finished in {end_time-start_time:.4f} seconds")
 
@@ -161,7 +163,8 @@ def install(targets: Optional[list[str]], build_data: BuildData) -> None:
         targets (Optional[list[str]]): none if all targets, else list of targets
         build_data (BuildData):
     """
-    print("============= Installing Targets ===============")
+    print()
+    print_box("Installing Targets", width=60, ch="=")
     start_time = time.time()
     # Install targets
     try:
@@ -185,13 +188,14 @@ def install(targets: Optional[list[str]], build_data: BuildData) -> None:
         die("[srbuild] Build: Error installing targets")
 
 
-    print("=============== Install Complete =================")
+    print()
+    print_box("Install Complete", width=60, ch="=")
     end_time = time.time()
     print(f"[srbuild] Install finished in {end_time-start_time:.4f} seconds")
 
 def clean(build_data: BuildData) -> None:
     """Deletes the entire build/ directory under build_data.build_root."""
-    print("============= Cleaning Targets ===============")
+    print_box("Cleaning Targets", width=60, ch="=")
     path = build_data.build_root / "build"
     res = input(f"[srbuild] Would you like to remove {path}? (y/n): ")
     if res.lower() != "y":
@@ -205,7 +209,8 @@ def clean(build_data: BuildData) -> None:
     else:
         print(f"[srbuild] Clean: {path} does not exist")
 
-    print("============== Clean Complete ================")
+    print()
+    print_box("Clean Complete", width=60, ch="=")
 
 def build_all(jobs: int, build_data: BuildData) -> None:
     """Configure, build, and install all targets."""
