@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 import shutil
+import tempfile
 from enum import Enum
 from typing import Callable, Optional
 from pathlib import Path
@@ -121,6 +122,35 @@ def test_one(module_root: Path) -> Result:
         return Result.FAIL
 
 
+def resolve_analyse_globs(analyse_txt: Path, module_root: Path) -> Path:
+    """Und's input files do not allow glob, so manually expand globs. Returns path to temp file with expanded globs"""
+    resolved: list[str] = []
+
+    for lineno, raw_line in enumerate(analyse_txt.read_text().splitlines(), start=1):
+        pattern = raw_line.strip()
+        if not pattern or pattern.startswith("#"):
+            continue
+
+        try:
+            matches = sorted(module_root.glob(pattern))
+        except Exception as e:
+            die(f"[srlow] Analyse: bad glob pattern on {analyse_txt}:{lineno}: '{pattern}' - {e}")
+
+        if not matches:
+            print(f"[srlow] Analyse: warning: glob pattern on {analyse_txt}:{lineno} matched no files: '{pattern}'")
+            continue
+
+        resolved.extend(str(m.relative_to(module_root)) for m in matches if m.is_file())
+
+    if not resolved:
+        die(f"[srlow] Analyse: {analyse_txt} resolved to no files")
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+    tmp.write("\n".join(resolved) + "\n")
+    tmp.close()
+    return Path(tmp.name)
+
+
 def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
     """Runs a bunch of und commands to setup and execute CodeCheck"""
     print_box(f"Analysing {module_root.name}")
@@ -152,19 +182,23 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
             print(f"[srlow] und '{stage}' failed - {e}")
             return Result.FAIL
 
-    # codecheck utself
-    result = subprocess.run(
-        [
-            "und", "-db", db,
-            "codecheck",
-            "-files", "./analyse.txt",
-            "-sarif", f"{output_dir_name}/{module_root.name}_analysis.sarif",
-            "-exitstatus",
-            str(repo_root / UND_CONFIG_FILE),
-            f"./{output_dir_name}",
-        ],
-        cwd=module_root,
-    )
+    # codecheck itself
+    resolved_files = resolve_analyse_globs(module_root/"analyse.txt", module_root)
+    try:
+        result = subprocess.run(
+            [
+                "und", "-db", db,
+                "codecheck",
+                "-files", str(resolved_files),
+                "-sarif", f"{output_dir_name}/{module_root.name}_analysis.sarif",
+                "-exitstatus",
+                str(repo_root / UND_CONFIG_FILE),
+                f"./{output_dir_name}",
+            ],
+            cwd=module_root,
+        )
+    finally:
+        resolved_files.unlink(missing_ok=True)
 
     if result.returncode == 0:
         return Result.PASS
