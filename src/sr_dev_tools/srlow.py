@@ -136,43 +136,43 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
         print(f"[srlow] Preset: {preset} was not found in {module_root}/build/")    
         return Result.SKIP    
     
-    try:
-        subprocess.run(
-            ["und", "-db", f"{module_root.name}.und", "create", "-languages", "c++"],
-            cwd=module_root,
-            check=True
-        )
-        subprocess.run(
-            ["und", "-db", f"{module_root.name}.und", "settings", "-C++MacrosAdd", "__GNUC__=15"],
-            cwd=module_root,
-            check=True
-        )
-        subprocess.run(
-            ["und", "-db", f"{module_root.name}.und", "add", "-cmake", f"./build/{preset}/compile_commands.json"],
-            cwd=module_root,
-            check=True
-        )
-        output_dir_name = f"{module_root.name}_analysis"
-        subprocess.run(
-            [
-                "und", 
-                "-db", 
-                f"{module_root.name}.und", 
-                "codecheck", 
-                "-files", 
-                "./analyse.txt", 
-                "-sarif", 
-                f"{output_dir_name}/{module_root.name}_analysis.sarif", 
-                "-exitstatus", 
-                f"{str(repo_root/UND_CONFIG_FILE)}", 
-                f"./{output_dir_name}"
-            ],
-            cwd=module_root,
-            check=True
-        )
+    db = f"{module_root.name}.und"
+    output_dir_name = f"{module_root.name}_analysis"
+
+    setup_steps = [
+        ("create",   ["und", "-db", db, "create", "-languages", "c++"]),
+        ("settings", ["und", "-db", db, "settings", "-C++MacrosAdd", "__GNUC__=15"]),
+        ("add",      ["und", "-db", db, "add", "-cmake", f"./build/{preset}/compile_commands.json"]),
+    ]
+
+    for stage, cmd in setup_steps:
+        try:
+            subprocess.run(cmd, cwd=module_root, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"[srlow] und '{stage}' failed - {e}")
+            return Result.FAIL
+
+    # codecheck utself
+    result = subprocess.run(
+        [
+            "und", "-db", db,
+            "codecheck",
+            "-files", "./analyse.txt",
+            "-sarif", f"{output_dir_name}/{module_root.name}_analysis.sarif",
+            "-exitstatus",
+            str(repo_root / UND_CONFIG_FILE),
+            f"./{output_dir_name}",
+        ],
+        cwd=module_root,
+    )
+
+    if result.returncode == 0:
         return Result.PASS
-    except Exception as e:
-        print(f"[srlow] Analyse: Analysis failed - {e}")
+    elif result.returncode > 0:
+        print(f"[srlow] Analyse: {result.returncode} violation(s) found failed")
+        return Result.FAIL
+    else:
+        print(f"[srlow] Analyse: und codecheck crashed (exit {result.returncode})")
         return Result.FAIL
 
 
