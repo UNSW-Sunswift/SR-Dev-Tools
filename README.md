@@ -1,11 +1,11 @@
 # Sunswift Dev Tools
 
-Developer tooling for SR-Mjolnir and SR-Gungnir, SR8's high level repositories. Also now includes tooling for SR-Amsvartnir, SR8's firmware repository
+Developer tooling for SR-Mjolnir and SR-Gungnir, SR8's high level repositories. Also now includes tooling for SR-Amsvartnir, SR8's firmware repository.
 Includes:
 
 - `srpkg`: creates a new DDS package in your current working directory
 - `srbuild`: wraps CMake to configure, build, and install targets
-- `srlow`: wraps CMake and Ceedling to build and test firmware modules
+- `srlow`: helper for building, ceedling unit testing and Understand static analysis
 
 Tools are installed as a [uv](https://docs.astral.sh/uv/) tool.
 
@@ -122,7 +122,7 @@ Defaults to 8 parallel jobs.
 
 ## `srlow`
 
-Wraps CMake and Ceedling to build and test the STM32 firmware modules in SR-Amsvartnir.
+Helper for CMake, Ceedling and Understand to build, test and analyse the STM32 firmware modules in SR-Amsvartnir.
 
 ### Repository root discovery
 
@@ -156,6 +156,27 @@ srlow test target module1 module2
 ```
 
 Runs `ceedling test:all gcov:all valgrind:all` in each module's `Test/` directory.
+
+### Analysing
+
+```bash
+# Analyse every module
+srlow analyse all --preset [Debug | Release]
+
+# Analyse specific modules
+srlow analyse target module1 module2 --preset debug
+```
+
+Runs Scitools Understand `codecheck` (MISRA-C 2025) on each module. Requires `und` to be installed and licensed, a `misra-c2025.json` config file at the repo root, and a `compile_commands.json`. This can easily be gotten by running srlow build.
+
+A module is analysed only if it has an `analyse.txt` file at its top level, listing which files to check. All paths are relative to module root:
+
+```
+# This is a comment
+Core/Src/my_math.c
+Core/Src/*.c          # inline comments and glob patterns are both supported
+Drivers/**/*.c
+```
 
 ### Installing
 
@@ -194,11 +215,11 @@ SR-Amsvartnir:
 ```bash
 # create STM32 Cube MX project in src/
 # add the install section to CMakeLists.txt
-srlow build all --preset Debug
-# or
 srlow build target my_project --preset Debug
 # Create src/my_project/Test and initialise as a Ceedling project
 srlow test target my_project
+# Create analylse.txt file with target files, then run:
+srlow analyse target my_project
 ```
 ## Contributors
 - Ryan Wong || z5417983
