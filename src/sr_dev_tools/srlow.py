@@ -128,6 +128,14 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
         print(f"[srlow] No analyse.txt file found, skipping...")
         return Result.SKIP
     
+    if not (module_root/"build").is_dir():
+        print(f"[srlow] No build dir, please build first")
+        return Result.SKIP
+    
+    if not (module_root/"build"/preset).is_file():
+        print(f"[srlow] Preset: {preset} was not found in build/")    
+        return Result.SKIP    
+    
     try:
         subprocess.run(
             ["und", "-db", f"{module_root.name}.und", "create", "-languages", "c++"],
