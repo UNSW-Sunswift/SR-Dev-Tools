@@ -133,7 +133,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
         return Result.SKIP
     
     if not (module_root/"build"/preset).is_file():
-        print(f"[srlow] Preset: {preset} was not found in build/")    
+        print(f"[srlow] Preset: {preset} was not found in {module_root}/build/")    
         return Result.SKIP    
     
     try:
