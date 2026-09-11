@@ -177,7 +177,7 @@ def run_over_modules(
     """Run `run_one` over every src/ module, tally results.
     Returns the number of FAIL results.
     """
-    print_box(f"{label}ing Targets", width=60, ch="=")
+    print_box(f"{label} Targets", width=60, ch="=")
     start_time = time.time()
 
     src_dir = repo_root/SRC_DIR
@@ -212,7 +212,7 @@ def run_over_modules(
         for t in missing:
             print(f"[srlow]   - {t}")
     print()
-    print_box(f"{label}ing Complete", width=60, ch="=")
+    print_box(f"{label} Complete", width=60, ch="=")
     print(f"[srlow] {label} finished in {time.time()-start_time:.4f} seconds")
     print(f"[srlow] {label}: Number passed - {len(num_pass)}")
     for t in num_pass:
