@@ -3,7 +3,7 @@
 ###############################################################################
 # Sunswift low level build and test tool
 # Author: Ryan Wong
-#   - Requries a marker file in repo root to know where to search from
+#   - Requires a marker file in repo root to know where to search from
 #   - Builds all stm32 modules under src/*/ where a CMakeLists.txt is found in each module root.
 #   - Then installs each module's binary into a root "deploy" dirctory
 #   - Also invokes ceedling for testing and und CodeCheck for static analysis
@@ -206,7 +206,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
     if result.returncode == 0:
         return Result.PASS
     elif result.returncode > 0:
-        logger.info(f"Analyse: {result.returncode} violation(s) found failed")
+        logger.info(f"Analyse: {result.returncode} violation(s) found")
         return Result.FAIL
     else:
         logger.error(f"Analyse: und codecheck crashed (exit {result.returncode})")
@@ -298,23 +298,23 @@ def analyse(targets: Optional[list[str]], repo_root: Path, preset: str) -> int:
             stderr=subprocess.DEVNULL
         )
     except Exception as e:
-        logger.error(f"An error has occured: {e}")
+        logger.error(f"An error has occurred: {e}")
         logger.error("Scitools Understand is probably not licensed or installed")
         return 1
     return run_over_modules("Analyse", targets, repo_root, lambda m: analyse_one(m, preset, repo_root))
 
-def clean(repo_root: Path) -> None:
+def clean(repo_root: Path) -> int:
     """loop through all src/*/. For those with a build/ directory, delete it"""
     res = input("[srlow] Would you like to clean all build/ directories? (y/n): ")
-    if res != "y":
+    if res.lower() != "y":
         logger.info("Cancelling clean..")
-        return
+        return 0
     print_box("Cleaning Targets", width=60, ch="=")
 
     num_pass = []
     num_fail = []
     for module in (repo_root/SRC_DIR).iterdir():
-        if not module.is_dir():
+        if not module.is_dir() and not module.is_symlink():
             continue
 
         build_dir = module/"build"
@@ -336,6 +336,7 @@ def clean(repo_root: Path) -> None:
     logger.info(f"Clean: Number failed - {len(num_fail)}")
     for t in num_fail:
         logger.info(f"  - {t}")
+    return len(num_fail)
 
 def parse_args() -> argparse.Namespace:
     """Construct parser and return arguments."""
@@ -390,7 +391,7 @@ def main() -> int:
         if args.build_action == "all":
             failures = build(None, repo_root, args.preset)
         elif args.build_action == "clean":
-            clean(repo_root)
+            failures = clean(repo_root)
         elif args.build_action == "target":
             failures = build(args.targets, repo_root, args.preset)
     elif args.command == "test":

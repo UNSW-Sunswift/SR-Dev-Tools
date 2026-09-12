@@ -218,7 +218,7 @@ SR-Amsvartnir:
 srlow build target my_project --preset Debug
 # Create src/my_project/Test and initialise as a Ceedling project
 srlow test target my_project
-# Create analylse.txt file with target files, then run:
+# Create analyse.txt file with target files, then run:
 srlow analyse target my_project
 ```
 ## Contributors
