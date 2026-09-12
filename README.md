@@ -1,12 +1,13 @@
 # Sunswift Dev Tools
 
-Developer tooling for SR-Mjolnir and SR-Gungnir, SR8's high level repositories.
+Developer tooling for SR-Mjolnir and SR-Gungnir, SR8's high level repositories. Also now includes tooling for SR-Amsvartnir, SR8's firmware repository.
 Includes:
 
 - `srpkg`: creates a new DDS package in your current working directory
 - `srbuild`: wraps CMake to configure, build, and install targets
+- `srlow`: helper for building, ceedling unit testing and Understand static analysis
 
-Both tools are installed as a [uv](https://docs.astral.sh/uv/) tool.
+Tools are installed as a [uv](https://docs.astral.sh/uv/) tool.
 
 `srlaunch` (process launcher) has moved to [`deprecated/`](deprecated/). QNX targets should use QNX's own process management. It is being replaced by a cross-platform orchestrator (Seb's thesis).
 
@@ -18,7 +19,7 @@ Install globally as a uv tool (recommended):
 uv tool install git+https://github.com/UNSW-Sunswift/SR-Dev-Tools.git
 ```
 
-This puts `srbuild` and `srpkg` on your PATH. To upgrade later:
+This puts all CLI tools on your PATH. To upgrade later:
 
 ```bash
 uv tool upgrade sr-dev-tools
@@ -119,8 +120,87 @@ srbuild target node1 -j 16
 
 Defaults to 8 parallel jobs.
 
-## Example workflow
+## `srlow`
 
+Helper for CMake, Ceedling and Understand to build, test and analyse the STM32 firmware modules in SR-Amsvartnir.
+
+### Repository root discovery
+
+`srlow` looks for a `.sunswift-firmware` marker file, walking up from your current directory. The nearest directory containing it is the root, and must contain a `src/` directory holding one subdirectory per STM32 module.
+
+Each module directory must have its own `CMakeLists.txt` and `CMakePresets.json` at its top level. A module may also contain a `Test/` directory, which must be a Ceedling project.
+
+### Building
+
+```bash
+# Build and install every module
+srlow build all --preset [Debug | Release]
+
+# Build and install specific modules (directory names)
+srlow build target module1 module2 --preset debug
+
+# Delete every module's build/ directory
+srlow build clean
+```
+
+`--preset` / `-p` is required for `all` and `target`, and names a CMake preset defined in each module's `CMakePresets.json`.
+
+### Testing
+
+```bash
+# Test every module
+srlow test all
+
+# Test specific modules
+srlow test target module1 module2
+```
+
+Runs `ceedling test:all gcov:all valgrind:all` in each module's `Test/` directory.
+
+### Analysing
+
+```bash
+# Analyse every module
+srlow analyse all --preset [Debug | Release]
+
+# Analyse specific modules
+srlow analyse target module1 module2 --preset debug
+```
+
+Runs Scitools Understand `codecheck` (MISRA-C 2025) on each module. Requires `und` to be installed and licensed, a `misra-c2025.json` config file at the repo root, and a `compile_commands.json`. This can easily be gotten by running srlow build.
+
+A module is analysed only if it has an `analyse.txt` file at its top level, listing which files to check. All paths are relative to module root:
+
+```
+# This is a comment
+Core/Src/my_math.c
+Core/Src/*.c          # inline comments and glob patterns are both supported
+Drivers/**/*.c
+```
+
+### Installing
+
+All `srlow build...` commands also installs generated binaries into a repo root `deploy/module_name/` directory. In each STM32 projects' CMakeLists.txt, the following addition is required:
+
+```bash
+# Installing ===========================
+# Auto-generate binary from ELF
+add_custom_command(
+    TARGET ${CMAKE_PROJECT_NAME}
+    POST_BUILD 
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/${CMAKE_PROJECT_NAME}.bin
+)
+
+install(
+    FILES
+    $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/${CMAKE_PROJECT_NAME}.bin
+    $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+    DESTINATION ${CMAKE_PROJECT_NAME}
+)
+```
+
+## Example workflow
+SR-Gungnir and SR-Mjolnir:
 ```bash
 cd path/to/your/project/src
 srpkg create my_dds_node
@@ -131,7 +211,16 @@ srbuild target my_dds_node
 # or
 srbuild all
 ```
-
+SR-Amsvartnir:
+```bash
+# create STM32 Cube MX project in src/
+# add the install section to CMakeLists.txt
+srlow build target my_project --preset Debug
+# Create src/my_project/Test and initialise as a Ceedling project
+srlow test target my_project
+# Create analyse.txt file with target files, then run:
+srlow analyse target my_project
+```
 ## Contributors
 - Ryan Wong || z5417983
 - Henry Jiang || z5416365
