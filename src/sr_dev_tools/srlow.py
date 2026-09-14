@@ -170,7 +170,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
         return Result.SKIP
     
     db = f"{module_root.name}.und"
-    output_dir_name = f"{module_root.name}_analysis"
+    output_dir_name = f"analysis"
 
     setup_steps = [
         ("create",   ["und", "-db", db, "create", "-languages", "c++"]),
@@ -193,7 +193,7 @@ def analyse_one(module_root: Path, preset: str, repo_root: Path) -> Result:
                 "und", "-db", db,
                 "codecheck",
                 "-files", str(resolved_files),
-                "-sarif", f"{output_dir_name}/{module_root.name}_analysis.sarif",
+                "-sarif", f"{output_dir_name}/analysis.sarif",
                 "-exitstatus",
                 str(repo_root / UND_CONFIG_FILE),
                 f"./{output_dir_name}",
