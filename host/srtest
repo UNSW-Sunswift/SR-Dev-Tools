@@ -198,7 +198,7 @@ def execute_binaries(test_binaries: list[Path], gtest_filter: str = None, output
     if failed_count > 0:
         die("\nSome test verification workflows failed.")
 
-def run_all_tests(exceptions: list[str] = None, gtest_filter: str = None, output_dir: str = None) -> None:
+def     run_all_tests(exceptions: list[str] = None, gtest_filter: str = None, output_dir: str = None) -> None:
     exception_binaries = {f"test_{node}" for node in exceptions} if exceptions else set()
     test_binaries = []
     
