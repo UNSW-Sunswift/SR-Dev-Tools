@@ -6,6 +6,7 @@ Includes:
 - `srpkg`: creates a new DDS package in your current working directory
 - `srbuild`: wraps CMake to configure, build, and install targets
 - `srlow`: helper for building, ceedling unit testing and Understand static analysis
+- `srdbcc`: generates C source and header files from a DBC database
 
 Tools are installed as a [uv](https://docs.astral.sh/uv/) tool.
 
@@ -198,6 +199,19 @@ install(
     DESTINATION ${CMAKE_PROJECT_NAME}
 )
 ```
+
+## `srdbcc`
+
+Generates C source and header files from a DBC database using `cantools`.
+
+```bash
+srdbcc path/to/database.dbc
+srdbcc path/to/database.dbc --database-name can --output-directory generated
+```
+
+The output directory is created if it does not exist. The generated files are
+named `<database-name>.h` and `<database-name>.c`; when `--database-name` is
+omitted, the input filename stem is converted to snake case.
 
 ## Example workflow
 SR-Gungnir and SR-Mjolnir:
