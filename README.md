@@ -206,6 +206,7 @@ Generates C source and header files from a DBC database using `cantools`.
 
 ```bash
 srdbcc path/to/database.dbc
+
 srdbcc path/to/database.dbc --database-name can --output-directory generated
 ```
 
@@ -238,3 +239,4 @@ srlow analyse target my_project
 ## Contributors
 - Ryan Wong || z5417983
 - Henry Jiang || z5416365
+- (srdbcc) Ryan Kwok || z5590821
