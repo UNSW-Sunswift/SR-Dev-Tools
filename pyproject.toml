@@ -9,6 +9,7 @@ dependencies = []
 srbuild = "sr_dev_tools.srbuild:main"
 srpkg = "sr_dev_tools.srpkg:main"
 srlow = "sr_dev_tools.srlow:main"
+sranalyse = "sr_dev_tools.sranalyse:main"
 
 [build-system]
 requires = ["hatchling"]
