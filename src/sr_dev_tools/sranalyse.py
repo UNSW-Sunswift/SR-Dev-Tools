@@ -8,7 +8,7 @@
 #     using the compile_commands.json produced by srbuild.
 # Usage:
 #   - sranalyse --linux
-#   - sranalyse --qnx <toolchain-file>
+#   - sranalyse --qnx
 ###############################################################################
 
 import argparse
@@ -27,36 +27,35 @@ logger = logging.getLogger("sranalyse")
 CWD = Path.cwd().resolve()
 MARKER_FILE = ".sunswift-evsn"
 UND_CONFIG_FILE = "misra-cpp2025.json"
+ANALYSE_TXT = "analyse.txt"
 UND_DB_NAME = "sranalyse.und"
 OUTPUT_DIR_NAME = "analysis"
-ANALYSE_GLOBS = [
-    "src/**/*.cpp",
-    "src/**/*.hpp",
-    "core/sr_node/*.cpp",
-    "core/sr_node/*.hpp",
-]
 
 # =================================================================================================
 # HELPERS
 # =================================================================================================
-def resolve_analyse_globs(repo_root: Path) -> Path:
-    """Und's input files do not allow glob, so manually expand ANALYSE_GLOBS. Returns path to temp file with expanded globs"""
+def resolve_analyse_globs(analyse_txt: Path, repo_root: Path) -> Path:
+    """Und's input files do not allow glob, so manually expand globs. Returns path to temp file with expanded globs"""
     resolved: list[str] = []
 
-    for pattern in ANALYSE_GLOBS:
+    for lineno, raw_line in enumerate(analyse_txt.read_text().splitlines(), start=1):
+        pattern = raw_line.split("#", 1)[0].strip()
+        if not pattern:
+            continue
+
         try:
             matches = sorted(repo_root.glob(pattern))
         except Exception as e:
-            die(f"Analyse: bad glob pattern '{pattern}' - {e}")
+            die(f"Analyse: bad glob pattern on {analyse_txt}:{lineno}: '{pattern}' - {e}")
 
         if not matches:
-            logger.warning(f"Analyse: glob pattern matched no files: '{pattern}'")
+            logger.warning(f"Analyse: glob pattern on {analyse_txt}:{lineno} matched no files: '{pattern}'")
             continue
 
         resolved.extend(str(m.relative_to(repo_root)) for m in matches if m.is_file())
 
     if not resolved:
-        die("Analyse: ANALYSE_GLOBS resolved to no files")
+        die(f"Analyse: {analyse_txt} resolved to no files")
 
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
     tmp.write("\n".join(resolved) + "\n")
@@ -71,6 +70,10 @@ def analyse(repo_root: Path, build_dir_path: Path) -> int:
     """Uses Scitools Understand CLI to run CodeCheck Misra CPP"""
     if not (repo_root/UND_CONFIG_FILE).is_file():
         logger.error(f"Analyse: {str(repo_root/UND_CONFIG_FILE)} not found")
+        return 1
+
+    if not (repo_root/ANALYSE_TXT).is_file():
+        logger.error(f"Analyse: {str(repo_root/ANALYSE_TXT)} not found")
         return 1
 
     try:
@@ -106,7 +109,7 @@ def analyse(repo_root: Path, build_dir_path: Path) -> int:
             logger.error(f"und '{stage}' failed - {e}")
             return 1
 
-    resolved_files = resolve_analyse_globs(repo_root)
+    resolved_files = resolve_analyse_globs(repo_root/ANALYSE_TXT, repo_root)
     try:
         result = subprocess.run(
             [
@@ -140,8 +143,8 @@ def parse_args() -> argparse.Namespace:
         description="Sunswift high level static analysis tool"
     )
     platform_flags = parser.add_mutually_exclusive_group(required=True)
-    platform_flags.add_argument("--qnx", metavar="TOOLCHAIN_FILE", help="Analyse the QNX build (path relative to current working directory)")
-    platform_flags.add_argument("--linux", action="store_true", help="Analyse the Linux build")
+    platform_flags.add_argument("--qnx", action="store_true", help="Analyse the QNX build (build/qnx)")
+    platform_flags.add_argument("--linux", action="store_true", help="Analyse the Linux build (build/linux)")
     return parser.parse_args()
 
 
