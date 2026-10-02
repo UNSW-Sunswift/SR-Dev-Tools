@@ -99,13 +99,7 @@ def analyse(repo_root: Path, build_dir_path: Path) -> int:
     setup_steps = [
         ("create",   ["und", "-db", UND_DB_NAME, "create", "-languages", "c++"]),
         ("settings", ["und", "-db", UND_DB_NAME, "settings",
-                      "-C++MacrosAdd", "__GNUC__=15",
-                      # fuck und. cant do shit
-                      "-C++MacrosAdd", "_Float32=float",
-                      "-C++MacrosAdd", "_Float64=double",
-                      "-C++MacrosAdd", "_Float128=long double",
-                      "-C++MacrosAdd", "_Float32x=float",
-                      "-C++MacrosAdd", "_Float64x=double"]),
+                      "-C++MacrosAdd", "__GNUC__=12"]),
         ("add",      ["und", "-db", UND_DB_NAME, "add", "-cmake", str(compile_commands)]),
     ]
 
