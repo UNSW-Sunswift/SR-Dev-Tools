@@ -26,7 +26,7 @@ logger = logging.getLogger("sranalyse")
 # =================================================================================================
 CWD = Path.cwd().resolve()
 MARKER_FILE = ".sunswift-evsn"
-UND_CONFIG_FILE = "misra-cpp2025.json"
+UND_CONFIG_FILE = "misra-cpp2023.json"
 ANALYSE_TXT = "analyse.txt"
 UND_DB_NAME = "sranalyse.und"
 OUTPUT_DIR_NAME = "analysis"
