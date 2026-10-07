@@ -3,12 +3,15 @@ name = "sr-dev-tools"
 version = "3.0.0"
 description = "Sunswift high-level DDS package and build tooling (srbuild, srpkg)"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "cantools",
+]
 
 [project.scripts]
 srbuild = "sr_dev_tools.srbuild:main"
 srpkg = "sr_dev_tools.srpkg:main"
 srlow = "sr_dev_tools.srlow:main"
+srdbcc = "sr_dev_tools.srdbcc:main"
 
 [build-system]
 requires = ["hatchling"]
