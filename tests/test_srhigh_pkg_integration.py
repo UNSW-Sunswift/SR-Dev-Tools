@@ -1,8 +1,8 @@
 ###############################################################################
-# Integration tests for srpkg CLI
+# Integration tests for srhigh pkg CLI
 # Author: Ryan Wong
 #
-# Made to run automatically on CI. Tests srpkg end to end by mocking a working
+# Made to run automatically on CI. Tests srhigh pkg end to end by mocking a working
 # directory and running the CLI commands. Uses pytest. Requires the
 # sr_dev_tools package to be installed (editable install is fine).
 ###############################################################################
@@ -16,10 +16,10 @@ from pathlib import Path
 # HELPER FUNCTIONS
 # =================================================================================================
 def run(*args: str, cwd: Path) -> subprocess.CompletedProcess:
-    """Run srpkg CLI and returns CompletedProcess object."""
+    """Run `srhigh pkg <args>` and return the CompletedProcess object."""
     env = os.environ.copy()
     result = subprocess.run(
-        [sys.executable, "-m", "sr_dev_tools.srpkg", *args],
+        [sys.executable, "-m", "sr_dev_tools.srhigh", "pkg", *args],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -32,7 +32,7 @@ def run(*args: str, cwd: Path) -> subprocess.CompletedProcess:
 # TESTS
 # =================================================================================================
 
-### srpkg create tests
+### srhigh pkg create tests
 def test_create_basic(tmp_path: Path) -> None:
     """Create package called my_node in CWD and verify creation"""
     r = run("create", "my_node", cwd=tmp_path)

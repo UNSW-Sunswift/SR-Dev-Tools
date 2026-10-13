@@ -1,8 +1,8 @@
 ###############################################################################
-# Integration tests for srbuild CLI
+# Integration tests for srhigh build CLI
 # Author: Ryan Wong
 #
-# Made to run automatically on CI. Tests srbuild end to end by mocking a
+# Made to run automatically on CI. Tests srhigh build end to end by mocking a
 # working directory and running the CLI commands. Uses pytest. Requires the
 # sr_dev_tools package to be installed (editable install is fine).
 # Uses fixtures from conftest.py to set up a temporary directory with the
@@ -17,9 +17,9 @@ from pathlib import Path
 # HELPER FUNCTIONS
 # =================================================================================================
 def run(*args: str, cwd: Path, stdin: str = "") -> subprocess.CompletedProcess:
-    """Run srbuild CLI and return the CompletedProcess object."""
+    """Run `srhigh build <args>` and return the CompletedProcess object."""
     return subprocess.run(
-        [sys.executable, "-m", "sr_dev_tools.srbuild", *args],
+        [sys.executable, "-m", "sr_dev_tools.srhigh", "build", *args],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -45,13 +45,13 @@ def test_rejects_missing_cmake(repo: Path) -> None:
     assert_failure(r)
 
 def test_accepts_valid_repo(configured_repo: Path) -> None:
-    """Should pass all srbuild sanity checks with a fully configured repo."""
+    """Should pass all srhigh build sanity checks with a fully configured repo."""
     # Have to add linux flag because we don't have a toolchain file
     r = run("all", "--linux", cwd=configured_repo)
     assert_success(r)
 
 def test_fails_without_marker(tmp_path: Path) -> None:
-    """No .sunswift-evsn marker anywhere: srbuild refuses to guess a root and errors out."""
+    """No .sunswift-evsn marker anywhere: srhigh build refuses to guess a root and errors out."""
     (tmp_path / "CMakeLists.txt").touch()
     r = run("all", "--linux", cwd=tmp_path)
     assert r.returncode != 0
@@ -71,17 +71,17 @@ def test_uses_marker_root_from_subdirectory(configured_repo: Path) -> None:
 # =================================================================================================
 
 def test_target_requires_at_least_one(repo: Path) -> None:
-    """srbuild target with no targets specified should fail."""
+    """srhigh build target with no targets specified should fail."""
     r = run("target", "--linux", cwd=repo)
     assert_failure(r)
 
 def test_target_accepts_single(configured_repo: Path) -> None:
-    """srbuild target with one target should reach cmake and create a build directory."""
+    """srhigh build target with one target should reach cmake and create a build directory."""
     run("target", "my_node", "--linux", cwd=configured_repo)
     assert (configured_repo / "build" / "linux").is_dir()
 
 def test_target_accepts_multiple(configured_repo: Path) -> None:
-    """srbuild target with multiple targets should reach cmake and create a build directory."""
+    """srhigh build target with multiple targets should reach cmake and create a build directory."""
     run("target", "node_a", "node_b", "--linux", cwd=configured_repo)
     assert (configured_repo / "build" / "linux").is_dir()
 
