@@ -41,132 +41,64 @@ RUN uv tool install git+https://github.com/UNSW-Sunswift/SR-Dev-Tools.git
 
 ## `srhigh`
 
-Helper for building, testing, statically analysing and creating DDS packages in SR-Mjolnir and SR-Gungnir. Replaces the old `srbuild`, `srpkg`, `sranalyse` and `srtest` tools.
+Build, test, analyse and create DDS packages in SR-Mjolnir and SR-Gungnir.
+
+`build`, `test` and `analyse` find the repo root by walking up from your current directory to the nearest `.sunswift-evsn` marker. The root must contain your top-level `CMakeLists.txt`. `pkg` works in any directory.
+
+### Build
 
 ```bash
-srhigh build ...     # was srbuild
-srhigh test ...      # was srtest (S130_dev-tools)
-srhigh analyse ...   # was sranalyse
-srhigh pkg ...       # was srpkg
+srhigh build all --linux                     # build and install everything
+srhigh build target node1 node2 --linux      # build and install specific targets
+srhigh build all --qnx=cmake/qnx.cmake       # cross-compile with a toolchain file (relative to your CWD)
+srhigh build all --linux -j 16               # parallel jobs (default 8)
+srhigh build clean                           # delete build/
 ```
 
-### Repository root discovery
+`--linux` or `--qnx=<toolchain>` is required for `all` and `target`. CMake files go to `build/<platform>/`, and installed binaries and params go to `deploy/<platform>/{bin,param}/`.
 
-`srhigh build`, `srhigh test` and `srhigh analyse` look for a `.sunswift-evsn` marker file, walking up from your current directory. The nearest directory containing it is treated as the root, and is assumed to contain your top-level `CMakeLists.txt`. `srhigh pkg` does not need the marker.
-
-### Building
-
-Invokes CMake to configure, build, and install targets.
+### Test
 
 ```bash
-# Build and install everything
-srhigh build all --linux
-
-# Build and install specific targets
-srhigh build target node1 node2 ... --linux
-
-# Delete the entire build/ directory
-srhigh build clean
+srhigh test all                              # run every test binary
+srhigh test all --except tpms motor          # skip some nodes
+srhigh test target pedal_box                 # run specific nodes
+srhigh test target pedal_box -f "*Parse*"    # GoogleTest filter
+srhigh test all -o build/test-results        # write gtest XML + summary.json
+srhigh test all --asan                       # enable AddressSanitizer leak detection
 ```
 
-#### Platform / toolchain selection
+Runs every executable named `test_<node>` in `build/linux/` (30 s timeout each), then prints pass/fail and `gcov` line and function coverage. Passing nodes under 60% line coverage are flagged. Build with `srhigh build all --linux` first, and compile with `--coverage` and `-fsanitize=address` to get coverage and ASan.
+
+### Analyse
 
 ```bash
-srhigh build all --linux                              # native build, no toolchain file
-srhigh build all --qnx=cmake/qnx_toolchain.cmake       # cross-compile using the given toolchain file
+srhigh analyse --linux                       # analyse build/linux
+srhigh analyse --qnx                         # analyse build/qnx
 ```
 
-You must supply one of `--qnx` or `--linux` for `all` and `target`; they are mutually exclusive. `--qnx` takes a path to a CMake toolchain file, resolved **relative to your current working directory** (not the discovered repo root).
+Runs Understand `codecheck` (MISRA C++ 2023) on the files listed in `analyse.txt` at the repo root. Globs and `#` comments are allowed. It needs a licensed `und`, `misra-cpp2023.json` at the repo root, and `compile_commands.json` from `srhigh build`. Results go to `analysis/`.
 
-#### Output layout
-
-Given a discovered root, `srhigh build` produces:
-
-```
-<root>/
-├── CMakeLists.txt
-├── build/
-│   └── linux/   (or qnx/, depending on the flag used)
-├── deploy/
-│   └── linux/   (or qnx/)
-│       ├── bin/
-│       └── param/
-```
-
-`build/` holds CMake's intermediate files (don't touch it directly). `deploy/` holds the stuff to deploy (duh)
-
-#### Parallel jobs
-
-```bash
-srhigh build all --linux --jobs 4
-srhigh build target node1 --linux -j 16
-```
-
-Defaults to 8 parallel jobs.
-
-### Testing
-
-Discovers and runs GoogleTest binaries, then prints a summary of pass/fail and line and function coverage (via `gcov`) for each.
-
-```bash
-# Run every test binary
-srhigh test all
-
-# Run everything except specific nodes
-srhigh test all --except tpms motor
-
-# Run only the nodes you are working on
-srhigh test target pedal_box
-
-# Run only test cases matching a GoogleTest filter
-srhigh test target pedal_box -f "*Parse*"
-
-# Export gtest XML reports and a summary.json to a directory (relative to your CWD)
-srhigh test all -o build/test-results
-
-# Monitor AddressSanitizer (leak detection on) and dump its stack trace on failure
-srhigh test target pedal_box --asan
-```
-
-Build with `srhigh build all --linux` first. Tests are always run from `build/linux/`, since QNX binaries can't run on the host.
-
-A test binary is any executable named `test_<node>` (no file extension) anywhere under `build/linux/`. Each binary has a 30 second timeout. With `--asan`/`-a`, binaries are run with `ASAN_OPTIONS=detect_leaks=1` (the node must be compiled with `-fsanitize=address`). Coverage is reported only if the node is compiled with `--coverage`, and is read from the `<node>_logic` (or `<node>`) CMake target's object directory. Passing nodes under 60% line coverage are flagged.
-
-### Analysing
-
-```bash
-srhigh analyse --linux   # analyse build/linux
-srhigh analyse --qnx     # analyse build/qnx
-```
-
-Runs Scitools Understand `codecheck` (MISRA C++ 2023) over the repo. Requires `und` to be installed and licensed, a `misra-cpp2023.json` config file at the repo root, and a `compile_commands.json` in the chosen build directory (run `srhigh build` first).
-
-Files to check are listed in an `analyse.txt` at the repo root, with paths relative to the root. Comments and glob patterns are supported, the same as `srlow analyse`. Results are written to `analysis/` at the repo root.
-
-### Creating packages
-
-Creates a new DDS package in the **current working directory**. Same idea as `ros2 pkg create`.
+### Pkg
 
 ```bash
 srhigh pkg create <package_name>
 ```
 
-This creates:
+Creates a `snake_case` DDS package in your current directory:
 
 ```
 <package_name>/
-├── .srpkg                             # Package metadata marker
-├── src/
-│   └── main.cpp
+├── .srpkg
+├── src/main.cpp
 ├── include/
 ├── test/
-├── param/
-│   └── <package_name>_param.toml
-├── CMakeLists.txt                     # Build configuration template
+├── param/<package_name>_param.toml
+├── CMakeLists.txt
 └── README.md
 ```
 
-Package names must be `snake_case`. `srhigh pkg` only checks for a duplicate name in the current directory and does not search the rest of your repository. If you have a build system which builds multiple executables from different directories, it is on you to make sure no packages (and so executables) share a name.
+It only checks for a duplicate name in the current directory, so make sure package names are unique across the repo.
 
 ## `srlow`
 
@@ -272,7 +204,7 @@ cd path/to/your/project
 srhigh build target my_dds_node --linux
 # or
 srhigh build all --linux
-# Add a test_my_dds_node GoogleTest executable, then run:
+# add a test_my_dds_node GoogleTest executable, then:
 srhigh test target my_dds_node
 ```
 SR-Amsvartnir:
