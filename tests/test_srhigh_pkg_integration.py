@@ -63,12 +63,12 @@ def test_create_scaffolds_node_class(tmp_path: Path) -> None:
     assert "MyNode node;" in (pkg / "src" / "main.cpp").read_text()
     assert "src/my_node.cpp" in (pkg / "CMakeLists.txt").read_text()
 
-def test_create_scaffolds_logic_class(tmp_path: Path) -> None:
-    """Generated node owns a MyNodeLogic class, and every code file starts with a hint."""
+def test_create_logic_is_plain_functions(tmp_path: Path) -> None:
+    """Logic files hold plain functions, no class, and every code file starts with a hint."""
     run("create", "my_node", cwd=tmp_path)
     pkg = tmp_path / "my_node"
-    assert "class MyNodeLogic" in (pkg / "include" / "my_node_logic.hpp").read_text()
-    assert "MyNodeLogic logic_;" in (pkg / "include" / "my_node.hpp").read_text()
+    assert "class" not in (pkg / "include" / "my_node_logic.hpp").read_text()
+    assert "logic_" not in (pkg / "include" / "my_node.hpp").read_text()
     for code_file in ["src/main.cpp", "src/my_node.cpp", "include/my_node.hpp",
                       "src/my_node_logic.cpp", "include/my_node_logic.hpp",
                       "test/unit/test_my_node.cpp"]:

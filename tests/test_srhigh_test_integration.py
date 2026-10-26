@@ -9,7 +9,6 @@
 ###############################################################################
 
 import json
-import os
 import stat
 import sys
 import subprocess
@@ -179,27 +178,31 @@ def test_failure_dumps_asan_trace(build_dir: Path) -> None:
     assert r.returncode != 0
     assert "heap-use-after-free" in r.stdout
 
-def test_failure_dumps_stderr_with_asan(build_dir: Path) -> None:
+def test_failure_dumps_leak_report(build_dir: Path) -> None:
+    """A LeakSanitizer report on stderr is dumped too."""
     make_binary(build_dir, "test_node_a", body='echo "LeakSanitizer: detected memory leaks" >&2\nexit 1')
-    r = run("all", "--asan", cwd=build_dir)
+    r = run("all", cwd=build_dir)
     assert r.returncode != 0
     assert "detected memory leaks" in r.stdout
 
-def test_asan_flag_sets_asan_options(build_dir: Path) -> None:
-    a = make_binary(build_dir, "test_node_a", body='echo "ASAN=$ASAN_OPTIONS" >> "$0.args"')
-    r = run("target", "node_a", "-a", cwd=build_dir)
-    assert r.returncode == 0, r.stderr
-    assert "detect_leaks=1" in args_of(a)
+def test_asan_flag_removed(build_dir: Path) -> None:
+    """ASan is set at build time (srhigh build --asan), so srhigh test has no --asan flag."""
+    r = run("all", "--asan", cwd=build_dir)
+    assert r.returncode == 2
 
-def test_no_asan_flag_leaves_asan_options(build_dir: Path) -> None:
-    a = make_binary(build_dir, "test_node_a", body='echo "ASAN=$ASAN_OPTIONS" >> "$0.args"')
-    r = subprocess.run(
-        [sys.executable, "-m", "sr_dev_tools.srhigh", "test", "all"],
-        cwd=build_dir, capture_output=True, text=True,
-        env={k: v for k, v in os.environ.items() if k != "ASAN_OPTIONS"},
-    )
+def test_logs_asan_on_for_asan_build(build_dir: Path) -> None:
+    make_binary(build_dir, "test_node_a")
+    (build_dir / "CMakeCache.txt").write_text("SR_ENABLE_ASAN:BOOL=ON\n")
+    r = run("all", cwd=build_dir)
     assert r.returncode == 0, r.stderr
-    assert "ASAN=\n" in args_of(a)
+    assert "AddressSanitizer ON" in r.stderr
+
+def test_logs_asan_off_for_normal_build(build_dir: Path) -> None:
+    make_binary(build_dir, "test_node_a")
+    (build_dir / "CMakeCache.txt").write_text("SR_ENABLE_ASAN:BOOL=OFF\n")
+    r = run("all", cwd=build_dir)
+    assert r.returncode == 0, r.stderr
+    assert "AddressSanitizer OFF" in r.stderr
 
 
 # =================================================================================================

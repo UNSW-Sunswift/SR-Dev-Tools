@@ -68,13 +68,12 @@ srhigh test all --except tpms motor          # skip some nodes
 srhigh test target pedal_box                 # run specific nodes
 srhigh test target pedal_box -f "*Parse*"    # GoogleTest filter
 srhigh test all -o build/test-results        # write gtest XML + summary.json
-srhigh test all --asan                       # show AddressSanitizer reports (needs an --asan build)
 ```
 
 Runs every `test_<node>` executable in `build/linux/` and prints pass/fail for each, with a 30 s timeout per binary. Build with `srhigh build all --linux` first.
 
 - With a `--coverage` build, results also show line and function coverage, and nodes under 60% line coverage are flagged.
-- With an `--asan` build, a test with a memory bug (buffer overflow, use-after-free, double free, leak) fails, and `--asan` prints where it happened.
+- With an `--asan` build, a test with a memory bug (buffer overflow, use-after-free, double free, leak) fails, and its AddressSanitizer report shows where it happened. The test log says whether AddressSanitizer is on.
 
 ### Analyse
 

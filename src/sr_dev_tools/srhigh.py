@@ -7,15 +7,15 @@
 #     (except `srhigh pkg`, which works in any directory)
 #   - build:   wraps CMake to configure, build and install targets into deploy/<platform>
 #   - test:    discovers and runs GoogleTest binaries (test_<node>) in build/linux,
-#              reporting line/function coverage (gcov), optionally with AddressSanitizer
+#              reporting line/function coverage (gcov) and AddressSanitizer errors
 #   - analyse: runs Scitools Understand CodeCheck (MISRA C++) over the repo
 #   - pkg:     creates a new DDS package in the current working directory
 # Usage:
 #   - srhigh build all (--qnx=<toolchain-file> | --linux [--coverage] [--asan]) [-j N]
 #   - srhigh build target <node1> <node2>... (--qnx=<toolchain-file> | --linux [--coverage] [--asan]) [-j N]
 #   - srhigh build clean
-#   - srhigh test all [--except <node>...] [-f <gtest filter>] [-o <report dir>] [--asan]
-#   - srhigh test target <node1> <node2>... [-f <gtest filter>] [-o <report dir>] [--asan]
+#   - srhigh test all [--except <node>...] [-f <gtest filter>] [-o <report dir>]
+#   - srhigh test target <node1> <node2>... [-f <gtest filter>] [-o <report dir>]
 #   - srhigh analyse (--qnx | --linux)
 #   - srhigh pkg create <name>
 ###############################################################################
@@ -391,8 +391,13 @@ def find_test_binaries(build_dir_path: Path) -> list[Path]:
         if p.is_file() and os.access(p, os.X_OK) and p.suffix == "" and p.name not in TEST_IGNORE_LIST
     )
 
+def built_with_asan(build_dir_path: Path) -> bool:
+    """True if build_dir_path was configured with srhigh build --asan"""
+    cache = build_dir_path / "CMakeCache.txt"
+    return cache.is_file() and "SR_ENABLE_ASAN:BOOL=ON" in cache.read_text().splitlines()
+
 def run_one_test(binary: Path, build_dir_path: Path, gtest_filter: Optional[str],
-                 log_path: Optional[Path], env: dict[str, str], use_asan: bool) -> TestResult:
+                 log_path: Optional[Path]) -> TestResult:
     """Runs a single GoogleTest binary and collects its coverage."""
     node_name = binary.name.removeprefix(TEST_PREFIX)
     cmd = [str(binary)]
@@ -403,7 +408,7 @@ def run_one_test(binary: Path, build_dir_path: Path, gtest_filter: Optional[str]
 
     reset_coverage(build_dir_path, node_name)
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=TEST_TIMEOUT_S, env=env)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=TEST_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         return TestResult(node_name, "TIMEOUT", "N/A", "N/A")
     except Exception as e:
@@ -414,13 +419,10 @@ def run_one_test(binary: Path, build_dir_path: Path, gtest_filter: Optional[str]
         line_cov, func_cov = extract_coverage_metrics(build_dir_path, node_name)
         return TestResult(node_name, "PASSED", line_cov, func_cov)
 
-    # Dump ASan's stack trace if there is one, otherwise GoogleTest's failure output
+    # Dump the Address/LeakSanitizer report if there is one, otherwise GoogleTest's failure output
     print("\n" + "!" * 60)
     print(f"TEST FAILURE DIAGNOSTIC LOG IN {binary.name}:")
-    if "AddressSanitizer" in res.stderr or use_asan:
-        print(res.stderr if res.stderr else res.stdout)
-    else:
-        print(res.stdout)
+    print(res.stderr if "Sanitizer" in res.stderr else res.stdout)
     print("!" * 60 + "\n")
     return TestResult(node_name, "FAILED", "N/A", "N/A")
 
@@ -465,7 +467,7 @@ def write_test_summary_json(results: list[TestResult], total_time: float, log_pa
         json.dump(summary, f, indent=4)
 
 def test(targets: Optional[list[str]], exceptions: list[str], build_root: Path,
-         gtest_filter: Optional[str], output_dir: Optional[str], use_asan: bool) -> int:
+         gtest_filter: Optional[str], output_dir: Optional[str]) -> int:
     """Run every test binary (targets=None) or only those of the given nodes.
     Returns the number of failed or missing test binaries.
     """
@@ -495,24 +497,19 @@ def test(targets: Optional[list[str]], exceptions: list[str], build_root: Path,
 
     if gtest_filter:
         logger.info(f"Test: Applying GoogleTest filter pattern '{gtest_filter}'")
-    if use_asan:
-        logger.info("Test: Monitoring AddressSanitizer (ASan) runtime events")
+    asan = "ON" if built_with_asan(build_dir_path) else "OFF (turn on with srhigh build --asan)"
+    logger.info(f"Test: AddressSanitizer {asan}")
 
     log_path = None
     if output_dir:
         log_path = (CWD / output_dir).resolve()
         log_path.mkdir(parents=True, exist_ok=True)
 
-    # With --asan, make AddressSanitizer track memory leaks and keep console formatting intact
-    env = os.environ.copy()
-    if use_asan:
-        env["ASAN_OPTIONS"] = "detect_leaks=1:color=always"
-
     start_time = time.time()
     results = []
     for binary in binaries:
         logger.info(f"Test: Running {binary.name}")
-        results.append(run_one_test(binary, build_dir_path, gtest_filter, log_path, env, use_asan))
+        results.append(run_one_test(binary, build_dir_path, gtest_filter, log_path))
     total_time = time.time() - start_time
 
     print_test_summary(results, total_time)
@@ -754,9 +751,6 @@ class {cls} : public SRNode {{
 public:
     {cls}();
     ~{cls}() override;
-
-private:
-    {cls}Logic logic_;
 }};
 """
     source = f"""// Create publishers, subscribers and timers, and handle incoming data here
@@ -774,14 +768,8 @@ private:
         file.write(source)
 
 def fill_logic(paths: PkgPaths) -> None:
-    cls = class_name(paths.pkg_name)
-    header = f"""// Declare your logic functions here
+    header = """// Declare your logic functions here
 #pragma once
-
-class {cls}Logic {{
-public:
-    // TODO: add your functions
-}};
 """
     source = f"""// Write your logic here
 #include "{paths.pkg_name}_logic.hpp"
@@ -876,7 +864,6 @@ def parse_args() -> argparse.Namespace:
     test_common = argparse.ArgumentParser(add_help=False)
     test_common.add_argument("--filter", "-f", default=None, help="GoogleTest case filter pattern")
     test_common.add_argument("--output", "-o", default=None, help="Directory to save structured XML/JSON reports")
-    test_common.add_argument("--asan", "-a", action="store_true", help="Monitor runtime memory profiles via AddressSanitizer")
 
     command_test = level1_junction.add_parser("test", help=f"Run GoogleTest binaries from {BUILD_FOLDER_NAME}/{TEST_PLATFORM}")
     test_sub = command_test.add_subparsers(dest="test_action", required=True)
@@ -929,9 +916,9 @@ def main() -> int:
             failures = build(targets, args.jobs, build_data)
     elif args.command == "test":
         if args.test_action == "all":
-            failures = test(None, args.except_nodes, repo_root, args.filter, args.output, args.asan)
+            failures = test(None, args.except_nodes, repo_root, args.filter, args.output)
         elif args.test_action == "target":
-            failures = test(args.targets, [], repo_root, args.filter, args.output, args.asan)
+            failures = test(args.targets, [], repo_root, args.filter, args.output)
     elif args.command == "analyse":
         target_platform = "qnx" if args.qnx else "linux"
         failures = analyse(repo_root, repo_root / BUILD_FOLDER_NAME / target_platform)
