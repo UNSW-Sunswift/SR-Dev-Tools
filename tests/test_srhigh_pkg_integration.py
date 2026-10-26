@@ -48,12 +48,34 @@ def test_create_basic(tmp_path: Path) -> None:
     assert (pkg / "param" / "my_node_param.toml").exists()
     assert (pkg / "CMakeLists.txt").exists()
     assert (pkg / "README.md").exists()
+    assert (pkg / "include" / "my_node_logic.hpp").exists()
+    assert (pkg / "src" / "my_node_logic.cpp").exists()
+    assert (pkg / "test" / "unit" / "test_my_node.cpp").exists()
+
+def test_create_scaffolds_unit_tests(tmp_path: Path) -> None:
+    """Generated package builds a <node>_logic library and a test_<node> GoogleTest binary."""
+    run("create", "my_node", cwd=tmp_path)
+    pkg = tmp_path / "my_node"
+    cmake = (pkg / "CMakeLists.txt").read_text()
+    assert "add_library(${TARGET_NAME}_logic" in cmake
+    assert "add_executable(test_${TARGET_NAME}" in cmake
+    assert "if(TARGET GTest::gtest_main)" in cmake
+
+    test = (pkg / "test" / "unit" / "test_my_node.cpp").read_text()
+    assert '#include "my_node_logic.hpp"' in test
+    assert "TEST(MyNodeTest," in test
+
+def test_create_suite_name_never_starts_with_digit(tmp_path: Path) -> None:
+    run("create", "8bit_node", cwd=tmp_path)
+    test = (tmp_path / "8bit_node" / "test" / "unit" / "test_8bit_node.cpp").read_text()
+    assert "TEST(Pkg8bitNodeTest," in test
 
 def test_create_cmakelists_has_no_external_function_dependency(tmp_path: Path) -> None:
     """Generated CMakeLists.txt should use plain install(), not sr_install_node."""
     run("create", "my_node", cwd=tmp_path)
     text = (tmp_path / "my_node" / "CMakeLists.txt").read_text()
     assert "sr_install_node" not in text
+    assert "sr_add_node_test" not in text
     assert "install(" in text
 
 def test_create_rejects_local_duplicate(tmp_path: Path) -> None:

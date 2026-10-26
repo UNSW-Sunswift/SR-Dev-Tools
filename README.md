@@ -97,12 +97,15 @@ Creates a `snake_case` DDS package in your current directory:
 <package_name>/
 ├── .srpkg
 ├── src/main.cpp
-├── include/
-├── test/
+├── src/<package_name>_logic.cpp
+├── include/<package_name>_logic.hpp
+├── test/unit/test_<package_name>.cpp
 ├── param/<package_name>_param.toml
 ├── CMakeLists.txt
 └── README.md
 ```
+
+It's ready for unit tests: put DDS-free logic in `<package_name>_logic`, and GoogleTest tests in `test/unit/`. `CMakeLists.txt` builds `test_<package_name>` whenever the project provides GoogleTest, so no CMake edits are needed.
 
 It only checks for a duplicate name in the current directory, so make sure package names are unique across the repo.
 

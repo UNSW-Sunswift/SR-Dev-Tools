@@ -69,14 +69,18 @@ PKG_NESTED_DIRS = {
     "src": "src",
     "include": "include",
     "param": "param",
-    "test": "test"
+    "test": "test",
+    "unit_test": "test/unit"
 }
 PKG_FILES = {
     "metadata": ".srpkg",
     "make": "CMakeLists.txt",
     "readme": "README.md",
     "param": "param/{pkg_name}_param.toml",
-    "main": "src/main.cpp"
+    "main": "src/main.cpp",
+    "logic_header": "include/{pkg_name}_logic.hpp",
+    "logic_source": "src/{pkg_name}_logic.cpp",
+    "unit_test": "test/unit/test_{pkg_name}.cpp"
 }
 
 @dataclass
@@ -661,15 +665,26 @@ set(INCLUDE_DIRS
 )
 set (LIBS
     sr_node
+    ${{TARGET_NAME}}_logic
     # add your type libraries here
     # add other dependencies here
 )
 set(PARAM_FILE param/{paths.pkg_name}_param.toml)
 
+# Testable logic, no DDS
+add_library(${{TARGET_NAME}}_logic STATIC src/${{TARGET_NAME}}_logic.cpp)
+target_include_directories(${{TARGET_NAME}}_logic PUBLIC ${{INCLUDE_DIRS}})
+
 # Compile and link
 add_executable(${{TARGET_NAME}} ${{SOURCES}})
 target_include_directories(${{TARGET_NAME}} PRIVATE ${{INCLUDE_DIRS}})
 target_link_libraries(${{TARGET_NAME}} PRIVATE ${{LIBS}})
+
+# Unit tests, only if GoogleTest is available
+if(TARGET GTest::gtest_main)
+    add_executable(test_${{TARGET_NAME}} test/unit/test_${{TARGET_NAME}}.cpp)
+    target_link_libraries(test_${{TARGET_NAME}} PRIVATE ${{TARGET_NAME}}_logic GTest::gtest_main)
+endif()
 
 # Install time
 install(
@@ -717,6 +732,35 @@ int main(int argc, char* argv[]) {
     with (paths.abs_pkg_path / PKG_FILES["main"]).open("w") as file:
         file.write(text)
 
+def gtest_suite_name(pkg_name: str) -> str:
+    """my_node -> MyNodeTest. GoogleTest names can't start with a digit"""
+    name = "".join(part.capitalize() for part in pkg_name.split("_"))
+    return f"{'Pkg' if name[:1].isdigit() else ''}{name}Test"
+
+def fill_logic(paths: PkgPaths) -> None:
+    header = """#pragma once
+
+// Node logic with no DDS goes here, so it can be unit tested
+"""
+    source = f"""#include "{paths.pkg_name}_logic.hpp"
+"""
+    with (paths.abs_pkg_path / PKG_FILES["logic_header"].format(pkg_name=paths.pkg_name)).open("w") as file:
+        file.write(header)
+    with (paths.abs_pkg_path / PKG_FILES["logic_source"].format(pkg_name=paths.pkg_name)).open("w") as file:
+        file.write(source)
+
+def fill_unit_test(paths: PkgPaths) -> None:
+    text = f"""#include <gtest/gtest.h>
+#include "{paths.pkg_name}_logic.hpp"
+
+// TODO: replace with tests for {paths.pkg_name}_logic
+TEST({gtest_suite_name(paths.pkg_name)}, Placeholder) {{
+    SUCCEED();
+}}
+"""
+    with (paths.abs_pkg_path / PKG_FILES["unit_test"].format(pkg_name=paths.pkg_name)).open("w") as file:
+        file.write(text)
+
 def validate_pkg_name(name: str) -> PkgPaths:
     if not re.match(r"^[a-z0-9_]+$", name):
         die("Pkg: Invalid package name: must be in 'snake_case'")
@@ -742,6 +786,8 @@ def pkg_create(name: str) -> int:
         fill_cmakelists(paths)
         fill_param(paths)
         fill_main(paths)
+        fill_logic(paths)
+        fill_unit_test(paths)
     except Exception as e:
         if paths.abs_pkg_path.exists():
             shutil.rmtree(paths.abs_pkg_path)
