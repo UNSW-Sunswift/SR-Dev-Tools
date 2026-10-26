@@ -48,9 +48,31 @@ def test_create_basic(tmp_path: Path) -> None:
     assert (pkg / "param" / "my_node_param.toml").exists()
     assert (pkg / "CMakeLists.txt").exists()
     assert (pkg / "README.md").exists()
+    assert (pkg / "include" / "my_node.hpp").exists()
+    assert (pkg / "src" / "my_node.cpp").exists()
     assert (pkg / "include" / "my_node_logic.hpp").exists()
     assert (pkg / "src" / "my_node_logic.cpp").exists()
     assert (pkg / "test" / "unit" / "test_my_node.cpp").exists()
+
+def test_create_scaffolds_node_class(tmp_path: Path) -> None:
+    """Generated package has a MyNode SRNode class that main() creates and spins."""
+    run("create", "my_node", cwd=tmp_path)
+    pkg = tmp_path / "my_node"
+    assert "class MyNode : public SRNode" in (pkg / "include" / "my_node.hpp").read_text()
+    assert 'SRNode("my_node")' in (pkg / "src" / "my_node.cpp").read_text()
+    assert "MyNode node;" in (pkg / "src" / "main.cpp").read_text()
+    assert "src/my_node.cpp" in (pkg / "CMakeLists.txt").read_text()
+
+def test_create_scaffolds_logic_class(tmp_path: Path) -> None:
+    """Generated node owns a MyNodeLogic class, and every code file starts with a hint."""
+    run("create", "my_node", cwd=tmp_path)
+    pkg = tmp_path / "my_node"
+    assert "class MyNodeLogic" in (pkg / "include" / "my_node_logic.hpp").read_text()
+    assert "MyNodeLogic logic_;" in (pkg / "include" / "my_node.hpp").read_text()
+    for code_file in ["src/main.cpp", "src/my_node.cpp", "include/my_node.hpp",
+                      "src/my_node_logic.cpp", "include/my_node_logic.hpp",
+                      "test/unit/test_my_node.cpp"]:
+        assert (pkg / code_file).read_text().startswith("//"), code_file
 
 def test_create_scaffolds_unit_tests(tmp_path: Path) -> None:
     """Generated package builds a <node>_logic library and a test_<node> GoogleTest binary."""

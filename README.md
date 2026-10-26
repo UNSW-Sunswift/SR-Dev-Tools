@@ -96,8 +96,10 @@ Creates a `snake_case` DDS package in your current directory:
 ```
 <package_name>/
 ├── .srpkg
-├── src/main.cpp
-├── src/<package_name>_logic.cpp
+├── src/main.cpp                          # creates and spins the node
+├── src/<package_name>.cpp                # the SRNode class
+├── include/<package_name>.hpp
+├── src/<package_name>_logic.cpp          # testable logic, no DDS
 ├── include/<package_name>_logic.hpp
 ├── test/unit/test_<package_name>.cpp
 ├── param/<package_name>_param.toml

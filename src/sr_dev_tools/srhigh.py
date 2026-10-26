@@ -78,6 +78,8 @@ PKG_FILES = {
     "readme": "README.md",
     "param": "param/{pkg_name}_param.toml",
     "main": "src/main.cpp",
+    "node_header": "include/{pkg_name}.hpp",
+    "node_source": "src/{pkg_name}.cpp",
     "logic_header": "include/{pkg_name}_logic.hpp",
     "logic_source": "src/{pkg_name}_logic.cpp",
     "unit_test": "test/unit/test_{pkg_name}.cpp"
@@ -658,6 +660,7 @@ def fill_cmakelists(paths: PkgPaths) -> None:
 set(TARGET_NAME {paths.pkg_name})
 set(SOURCES
     src/main.cpp
+    src/{paths.pkg_name}.cpp
     # Add your sources here
 )
 set(INCLUDE_DIRS
@@ -719,30 +722,69 @@ def fill_param(paths: PkgPaths) -> None:
     with (paths.abs_pkg_path / PKG_FILES["param"].format(pkg_name=paths.pkg_name)).open("w") as file:
         file.write(text)
 
+def class_name(pkg_name: str) -> str:
+    """my_node -> MyNode. C++ names can't start with a digit"""
+    name = "".join(part.capitalize() for part in pkg_name.split("_"))
+    return f"Pkg{name}" if name[:1].isdigit() else name
+
+def gtest_suite_name(pkg_name: str) -> str:
+    return f"{class_name(pkg_name)}Test"
+
 def fill_main(paths: PkgPaths) -> None:
-    text = """// #include "my_node.hpp" TODO: change to your node
+    text = f"""// Starts the node. No need to edit
+#include "{paths.pkg_name}.hpp"
 
-int main(int argc, char* argv[]) {
-    // TODO: initialise SRNode
-    // TODO: Spin SRNode and catch exceptions
-    return 0;
-}
-
+int main(int argc, char* argv[]) {{
+    {class_name(paths.pkg_name)} node;
+    node.spin();
+}}
 """
     with (paths.abs_pkg_path / PKG_FILES["main"]).open("w") as file:
         file.write(text)
 
-def gtest_suite_name(pkg_name: str) -> str:
-    """my_node -> MyNodeTest. GoogleTest names can't start with a digit"""
-    name = "".join(part.capitalize() for part in pkg_name.split("_"))
-    return f"{'Pkg' if name[:1].isdigit() else ''}{name}Test"
+def fill_node(paths: PkgPaths) -> None:
+    cls = class_name(paths.pkg_name)
+    header = f"""// Declare your publishers, subscribers and handler functions here
+#pragma once
+
+#include "sr_node.hpp"
+#include "{paths.pkg_name}_logic.hpp"
+
+class {cls} : public SRNode {{
+public:
+    {cls}();
+    ~{cls}() override;
+
+private:
+    {cls}Logic logic_;
+}};
+"""
+    source = f"""// Create publishers, subscribers and timers, and handle incoming data here
+#include "{paths.pkg_name}.hpp"
+
+{cls}::{cls}() : SRNode("{paths.pkg_name}") {{
+    // TODO: create publishers, subscribers and timers
+}}
+
+{cls}::~{cls}() = default;
+"""
+    with (paths.abs_pkg_path / PKG_FILES["node_header"].format(pkg_name=paths.pkg_name)).open("w") as file:
+        file.write(header)
+    with (paths.abs_pkg_path / PKG_FILES["node_source"].format(pkg_name=paths.pkg_name)).open("w") as file:
+        file.write(source)
 
 def fill_logic(paths: PkgPaths) -> None:
-    header = """#pragma once
+    cls = class_name(paths.pkg_name)
+    header = f"""// Declare your logic functions here
+#pragma once
 
-// Node logic with no DDS goes here, so it can be unit tested
+class {cls}Logic {{
+public:
+    // TODO: add your functions
+}};
 """
-    source = f"""#include "{paths.pkg_name}_logic.hpp"
+    source = f"""// Write your logic here
+#include "{paths.pkg_name}_logic.hpp"
 """
     with (paths.abs_pkg_path / PKG_FILES["logic_header"].format(pkg_name=paths.pkg_name)).open("w") as file:
         file.write(header)
@@ -750,12 +792,12 @@ def fill_logic(paths: PkgPaths) -> None:
         file.write(source)
 
 def fill_unit_test(paths: PkgPaths) -> None:
-    text = f"""#include <gtest/gtest.h>
+    text = f"""// Write unit tests for your logic here
+#include <gtest/gtest.h>
 #include "{paths.pkg_name}_logic.hpp"
 
-// TODO: replace with tests for {paths.pkg_name}_logic
 TEST({gtest_suite_name(paths.pkg_name)}, Placeholder) {{
-    SUCCEED();
+    SUCCEED(); // TODO: replace with real tests
 }}
 """
     with (paths.abs_pkg_path / PKG_FILES["unit_test"].format(pkg_name=paths.pkg_name)).open("w") as file:
@@ -786,6 +828,7 @@ def pkg_create(name: str) -> int:
         fill_cmakelists(paths)
         fill_param(paths)
         fill_main(paths)
+        fill_node(paths)
         fill_logic(paths)
         fill_unit_test(paths)
     except Exception as e:
