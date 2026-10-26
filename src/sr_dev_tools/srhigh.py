@@ -11,8 +11,8 @@
 #   - analyse: runs Scitools Understand CodeCheck (MISRA C++) over the repo
 #   - pkg:     creates a new DDS package in the current working directory
 # Usage:
-#   - srhigh build all (--qnx=<toolchain-file> | --linux) [-j N]
-#   - srhigh build target <node1> <node2>... (--qnx=<toolchain-file> | --linux) [-j N]
+#   - srhigh build all (--qnx=<toolchain-file> | --linux [--coverage] [--asan]) [-j N]
+#   - srhigh build target <node1> <node2>... (--qnx=<toolchain-file> | --linux [--coverage] [--asan]) [-j N]
 #   - srhigh build clean
 #   - srhigh test all [--except <node>...] [-f <gtest filter>] [-o <report dir>] [--asan]
 #   - srhigh test target <node1> <node2>... [-f <gtest filter>] [-o <report dir>] [--asan]
@@ -87,6 +87,8 @@ class BuildData:
     cmakelists_path: Path
     target_platform: str  # e.g. "qnx" or "linux"
     toolchain_path: Optional[Path]  # absolute path to CMake toolchain file, or None for native
+    coverage: bool = False  # passed to CMake as SR_ENABLE_COVERAGE
+    asan: bool = False  # passed to CMake as SR_ENABLE_ASAN
 
 @dataclass
 class PkgPaths:
@@ -132,7 +134,23 @@ def safe_rmdir(path: Path, build_root: Path) -> bool:
     shutil.rmtree(path)
     return True
 
-def make_build_data(build_root: Path, target_platform: str, toolchain_path: Optional[Path]) -> BuildData:
+def on_off(flag: bool) -> str:
+    return "ON" if flag else "OFF"
+
+def unused_cli_flag() -> str:
+    """CMake flag that silences the unused -D variable warning. CMake 4.4 renamed it, and each
+    version ignores (or warns about) the other spelling
+    """
+    try:
+        out = subprocess.run(["cmake", "--version"], capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        out = ""  # configure_cmake reports the missing cmake
+    match = re.search(r"(\d+)\.(\d+)", out)
+    version = (int(match[1]), int(match[2])) if match else (0, 0)
+    return "-Wno-unused-cli" if version >= (4, 4) else "--no-warn-unused-cli"
+
+def make_build_data(build_root: Path, target_platform: str, toolchain_path: Optional[Path],
+                    coverage: bool = False, asan: bool = False) -> BuildData:
     """Derive all build paths from the repo root and target platform."""
     return BuildData(
         build_root=build_root,
@@ -141,6 +159,8 @@ def make_build_data(build_root: Path, target_platform: str, toolchain_path: Opti
         cmakelists_path=build_root / "CMakeLists.txt",
         target_platform=target_platform,
         toolchain_path=toolchain_path,
+        coverage=coverage,
+        asan=asan,
     )
 
 def configure_cmake(build_data: BuildData) -> None:
@@ -150,6 +170,7 @@ def configure_cmake(build_data: BuildData) -> None:
     """
     print_box("CMake Initialisation", width=60, ch="=")
     logger.info(f"TARGET PLATFORM: {build_data.target_platform}")
+    logger.info(f"COVERAGE: {on_off(build_data.coverage)}, ASAN: {on_off(build_data.asan)}")
     # CMakeLists.txt at build root MUST exist. Makes build dir if does not exist
     if not build_data.cmakelists_path.is_file():
         die(
@@ -163,12 +184,16 @@ def configure_cmake(build_data: BuildData) -> None:
         except Exception as e:
             die(f"Build: Failed to create build directory: {e}")
 
-    # Re-init cmake
+    # Re-init cmake. Coverage and ASan are always passed, so toggling them doesn't need a clean.
+    # Projects that don't read them would warn about unused variables, hence unused_cli_flag()
     cmd = [
         "cmake",
         "-S", str(build_data.build_root),
         "-B", str(build_data.build_dir_path),
+        unused_cli_flag(),
         f"-DCMAKE_INSTALL_PREFIX={build_data.install_prefix}",
+        f"-DSR_ENABLE_COVERAGE={on_off(build_data.coverage)}",
+        f"-DSR_ENABLE_ASAN={on_off(build_data.asan)}",
     ]
 
     if build_data.toolchain_path is not None:
@@ -277,16 +302,61 @@ def clean(build_root: Path) -> int:
 # TEST
 # =================================================================================================
 
+def parse_gcov_output(output: str, repo_root: Path) -> tuple[int, int, int, int]:
+    """Totals `gcov -f` output into (lines_hit, lines_total, funcs_hit, funcs_total).
+    gcov prints each source file's Function blocks followed by its File block. Only source files
+    inside repo_root (and not generated under build/) count, which drops STL and system headers.
+    """
+    build_dir = repo_root / BUILD_FOLDER_NAME
+    lines_hit = lines_total = funcs_hit = funcs_total = 0
+    pending_funcs: list[tuple[str, float]] = []
+
+    for kind, name, pct, count in re.findall(
+        r"(Function|File) '(.*?)'\s+Lines executed:\s*([\d\.]+)% of (\d+)", output
+    ):
+        if kind == "Function":
+            pending_funcs.append((name, float(pct)))
+            continue
+
+        source = (repo_root / name).resolve()
+        counted = source.is_relative_to(repo_root) and not source.is_relative_to(build_dir)
+        if counted:
+            lines_total += int(count)
+            lines_hit += round(float(pct) * int(count) / 100)
+            for func_name, func_pct in pending_funcs:
+                # Filter out C++ standard library and GoogleTest template noise
+                if func_name.startswith(STL_SYMBOL_PREFIXES) or "testing::" in func_name:
+                    continue
+                funcs_total += 1
+                if func_pct > 0.0:
+                    funcs_hit += 1
+        pending_funcs = []
+
+    return lines_hit, lines_total, funcs_hit, funcs_total
+
+def find_coverage_dir(build_dir_path: Path, node_name: str) -> Optional[Path]:
+    """The node's <node>_logic CMake object directory, falling back to <node>"""
+    for dir_name in (f"{node_name}_logic.dir", f"{node_name}.dir"):
+        obj_dir = next((p for p in build_dir_path.rglob(dir_name) if p.is_dir()), None)
+        if obj_dir:
+            return obj_dir
+    return None
+
+def reset_coverage(build_dir_path: Path, node_name: str) -> None:
+    """Deletes the node's .gcda counters, so coverage reflects only this run. Also stops stale
+    counters from an old --coverage build being reported after coverage is turned off
+    """
+    obj_dir = find_coverage_dir(build_dir_path, node_name)
+    if obj_dir:
+        for gcda in obj_dir.rglob("*.gcda"):
+            gcda.unlink(missing_ok=True)
+
 def extract_coverage_metrics(build_dir_path: Path, node_name: str) -> tuple[str, str]:
     """Invokes gcov to extract line coverage percentage and function ratios, ignoring STL overhead.
     Coverage is read from the node's <node>_logic CMake object directory, falling back to <node>.
     """
-    obj_dir = None
-    for dir_name in (f"{node_name}_logic.dir", f"{node_name}.dir"):
-        obj_dir = next((p for p in build_dir_path.rglob(dir_name) if p.is_dir()), None)
-        if obj_dir:
-            break
-
+    repo_root = build_dir_path.parents[1]  # build_dir_path is <root>/build/<platform>
+    obj_dir = find_coverage_dir(build_dir_path, node_name)
     if not obj_dir:
         return "N/A", "N/A"
 
@@ -295,30 +365,18 @@ def extract_coverage_metrics(build_dir_path: Path, node_name: str) -> tuple[str,
         return "N/A", "N/A"
 
     try:
-        # -f generates function-level statistics
+        # -f generates function-level statistics. gcov writes its .gcov files into cwd
         res = subprocess.run(
-            ["gcov", "-f", str(gcda_files[0])],
+            ["gcov", "-f", *map(str, gcda_files)],
             capture_output=True, text=True, cwd=str(obj_dir)
         )
-
-        line_match = re.search(r"Lines executed:\s*([\d\.]+)%", res.stdout)
-        line_str = f"{float(line_match.group(1)):.1f}%" if line_match else "0.0%"
-
-        func_blocks = re.findall(r"Function '(.*?)'\s+Lines executed:\s*([\d\.]+)%", res.stdout)
-        func_passed = 0
-        func_total = 0
-        for func_name, pct in func_blocks:
-            # Filter out C++ standard library and GoogleTest template noise
-            if func_name.startswith(STL_SYMBOL_PREFIXES) or "testing::" in func_name:
-                continue
-            func_total += 1
-            if float(pct) > 0.0:
-                func_passed += 1
-
-        func_str = f"{func_passed}/{func_total}" if func_total > 0 else "1/1"
-        return line_str, func_str
+        lines_hit, lines_total, funcs_hit, funcs_total = parse_gcov_output(res.stdout, repo_root)
     except Exception:
         return "ERR", "ERR"
+
+    line_str = f"{100 * lines_hit / lines_total:.1f}%" if lines_total > 0 else "N/A"
+    func_str = f"{funcs_hit}/{funcs_total}" if funcs_total > 0 else "N/A"
+    return line_str, func_str
 
 def find_test_binaries(build_dir_path: Path) -> list[Path]:
     """Recursively find all executable test_* binaries in the build directory, minus TEST_IGNORE_LIST"""
@@ -337,6 +395,7 @@ def run_one_test(binary: Path, build_dir_path: Path, gtest_filter: Optional[str]
     if log_path:
         cmd.append(f"--gtest_output=xml:{log_path / f'{binary.name}_report.xml'}")
 
+    reset_coverage(build_dir_path, node_name)
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=TEST_TIMEOUT_S, env=env)
     except subprocess.TimeoutExpired:
@@ -714,6 +773,8 @@ def parse_args() -> argparse.Namespace:
     build_platform = build_common.add_mutually_exclusive_group(required=True)
     build_platform.add_argument("--qnx", metavar="TOOLCHAIN_FILE", help="Build QNX packages using the given CMake toolchain file (path relative to current working directory)")
     build_platform.add_argument("--linux", action="store_true", help="Build Linux packages")
+    build_common.add_argument("--coverage", action="store_true", help="Instrument for gcov coverage, sets SR_ENABLE_COVERAGE=ON (Linux only)")
+    build_common.add_argument("--asan", action="store_true", help="Build with AddressSanitizer, sets SR_ENABLE_ASAN=ON (Linux only)")
 
     command_build = level1_junction.add_parser("build", help="Configure, build and install all or specific targets")
     build_sub = command_build.add_subparsers(dest="build_action", required=True)
@@ -747,7 +808,10 @@ def parse_args() -> argparse.Namespace:
     pkg_create_cmd = pkg_sub.add_parser("create", help="Create a new DDS package")
     pkg_create_cmd.add_argument("name", help="Name of package to create (snake_case)")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if getattr(args, "qnx", None) and args.command == "build" and (args.coverage or args.asan):
+        parser.error("--coverage and --asan are Linux only, as unit tests only run on Linux")
+    return args
 
 # =================================================================================================
 # MAIN
@@ -771,7 +835,7 @@ def main() -> int:
             if args.qnx:
                 build_data = make_build_data(repo_root, "qnx", (CWD / args.qnx).resolve())
             else:
-                build_data = make_build_data(repo_root, "linux", None)
+                build_data = make_build_data(repo_root, "linux", None, args.coverage, args.asan)
             targets = None if args.build_action == "all" else args.targets
             failures = build(targets, args.jobs, build_data)
     elif args.command == "test":

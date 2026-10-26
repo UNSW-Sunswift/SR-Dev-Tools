@@ -165,3 +165,60 @@ def test_clean_handles_missing_build(configured_repo: Path) -> None:
     """Clean should succeed gracefully when build/ does not exist."""
     r = run("clean", cwd=configured_repo, stdin="y\n")
     assert_success(r)
+
+
+# =================================================================================================
+# COVERAGE / ASAN FLAG TESTS
+# =================================================================================================
+
+def flag_repo(repo: Path) -> Path:
+    """Repo whose CMakeLists prints the SR_ENABLE_* values srhigh passes in."""
+    (repo / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.16)\n"
+        "project(flags NONE)\n"
+        'message(STATUS "SR_ENABLE_COVERAGE=${SR_ENABLE_COVERAGE}")\n'
+        'message(STATUS "SR_ENABLE_ASAN=${SR_ENABLE_ASAN}")\n'
+    )
+    return repo
+
+def test_flags_default_off(repo: Path) -> None:
+    r = run("all", "--linux", cwd=flag_repo(repo))
+    assert_success(r)
+    assert "SR_ENABLE_COVERAGE=OFF" in r.stdout
+    assert "SR_ENABLE_ASAN=OFF" in r.stdout
+
+def test_coverage_flag_on(repo: Path) -> None:
+    r = run("all", "--linux", "--coverage", cwd=flag_repo(repo))
+    assert_success(r)
+    assert "SR_ENABLE_COVERAGE=ON" in r.stdout
+    assert "SR_ENABLE_ASAN=OFF" in r.stdout
+
+def test_asan_flag_on_target(repo: Path) -> None:
+    r = run("target", "my_node", "--linux", "--asan", cwd=flag_repo(repo))
+    assert "SR_ENABLE_ASAN=ON" in r.stdout
+    assert "SR_ENABLE_COVERAGE=OFF" in r.stdout
+
+def test_flags_toggle_without_clean(repo: Path) -> None:
+    """Flags are passed on every configure, so turning them off works on an existing build dir."""
+    flag_repo(repo)
+    assert "SR_ENABLE_COVERAGE=ON" in run("all", "--linux", "--coverage", "--asan", cwd=repo).stdout
+    r = run("all", "--linux", cwd=repo)
+    assert_success(r)
+    assert "SR_ENABLE_COVERAGE=OFF" in r.stdout
+    assert "SR_ENABLE_ASAN=OFF" in r.stdout
+
+def test_flags_dont_warn_on_projects_without_them(configured_repo: Path) -> None:
+    """Projects that don't read SR_ENABLE_* shouldn't get an unused variable warning."""
+    r = run("all", "--linux", cwd=configured_repo)
+    assert_success(r)
+    assert "SR_ENABLE_COVERAGE" not in r.stderr
+    assert "deprecated" not in r.stderr
+
+def test_coverage_rejected_with_qnx(configured_repo: Path) -> None:
+    r = run("all", "--qnx=cmake/qnx.cmake", "--coverage", cwd=configured_repo)
+    assert r.returncode == 2, f"Expected argparse exit code 2\nstderr: {r.stderr}"
+    assert "Linux only" in r.stderr
+
+def test_asan_rejected_with_qnx(configured_repo: Path) -> None:
+    r = run("target", "my_node", "--qnx=cmake/qnx.cmake", "--asan", cwd=configured_repo)
+    assert r.returncode == 2, f"Expected argparse exit code 2\nstderr: {r.stderr}"

@@ -52,10 +52,13 @@ srhigh build all --linux                     # build and install everything
 srhigh build target node1 node2 --linux      # build and install specific targets
 srhigh build all --qnx=cmake/qnx.cmake       # cross-compile with a toolchain file (relative to your CWD)
 srhigh build all --linux -j 16               # parallel jobs (default 8)
+srhigh build all --linux --coverage --asan   # test build with coverage and AddressSanitizer
 srhigh build clean                           # delete build/
 ```
 
 `--linux` or `--qnx=<toolchain>` is required for `all` and `target`. CMake files go to `build/<platform>/`, and installed binaries and params go to `deploy/<platform>/{bin,param}/`.
+
+`--coverage` and `--asan` are for testing only, and Linux only. Without them you get a normal build, and you can switch between the two without a clean. They work in projects whose CMake reads `SR_ENABLE_COVERAGE` and `SR_ENABLE_ASAN`, such as SR-Gungnir's `cmake/SRTesting.cmake`.
 
 ### Test
 
@@ -65,10 +68,13 @@ srhigh test all --except tpms motor          # skip some nodes
 srhigh test target pedal_box                 # run specific nodes
 srhigh test target pedal_box -f "*Parse*"    # GoogleTest filter
 srhigh test all -o build/test-results        # write gtest XML + summary.json
-srhigh test all --asan                       # enable AddressSanitizer leak detection
+srhigh test all --asan                       # show AddressSanitizer reports (needs an --asan build)
 ```
 
-Runs every executable named `test_<node>` in `build/linux/` (30 s timeout each), then prints pass/fail and `gcov` line and function coverage. Passing nodes under 60% line coverage are flagged. Build with `srhigh build all --linux` first, and compile with `--coverage` and `-fsanitize=address` to get coverage and ASan.
+Runs every `test_<node>` executable in `build/linux/` and prints pass/fail for each, with a 30 s timeout per binary. Build with `srhigh build all --linux` first.
+
+- With a `--coverage` build, results also show line and function coverage, and nodes under 60% line coverage are flagged.
+- With an `--asan` build, a test with a memory bug (buffer overflow, use-after-free, double free, leak) fails, and `--asan` prints where it happened.
 
 ### Analyse
 
@@ -205,6 +211,7 @@ srhigh build target my_dds_node --linux
 # or
 srhigh build all --linux
 # add a test_my_dds_node GoogleTest executable, then:
+srhigh build target my_dds_node test_my_dds_node --linux
 srhigh test target my_dds_node
 ```
 SR-Amsvartnir:

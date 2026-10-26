@@ -262,3 +262,48 @@ def test_coverage_na_without_object_dir(tmp_path: Path) -> None:
 def test_coverage_na_without_gcda(tmp_path: Path) -> None:
     (tmp_path / "src" / "CMakeFiles" / "node_a_logic.dir").mkdir(parents=True)
     assert srhigh.extract_coverage_metrics(tmp_path, "node_a") == ("N/A", "N/A")
+
+def gcov_block(kind: str, name: str, pct: float, count: int) -> str:
+    return f"{kind} '{name}'\nLines executed:{pct:.2f}% of {count}\n\n"
+
+def test_gcov_uses_file_totals_not_first_function(tmp_path: Path) -> None:
+    """Function blocks come before the File block, so the first percentage isn't the file's."""
+    out = (gcov_block("Function", "_Z3addii", 100, 1)
+           + gcov_block("Function", "_Z6unusedi", 0, 1)
+           + gcov_block("File", str(tmp_path / "src" / "logic.cpp"), 50, 2))
+    assert srhigh.parse_gcov_output(out, tmp_path) == (1, 2, 1, 2)
+
+def test_gcov_sums_multiple_files(tmp_path: Path) -> None:
+    out = (gcov_block("Function", "_Z1av", 100, 3)
+           + gcov_block("File", str(tmp_path / "a.cpp"), 100, 3)
+           + gcov_block("Function", "_Z1bv", 0, 1)
+           + gcov_block("File", str(tmp_path / "b.cpp"), 0, 1))
+    assert srhigh.parse_gcov_output(out, tmp_path) == (3, 4, 1, 2)
+
+def test_gcov_ignores_system_and_build_files(tmp_path: Path) -> None:
+    """STL headers and generated build/ sources don't count, nor do their functions."""
+    out = (gcov_block("Function", "_ZNSt6vectorIiE4sizeEv", 100, 8)
+           + gcov_block("File", "/usr/include/c++/v1/vector", 100, 8)
+           + gcov_block("Function", "_Z3genv", 100, 5)
+           + gcov_block("File", str(tmp_path / "build" / "linux" / "gen.cpp"), 100, 5)
+           + gcov_block("Function", "_Z3addii", 0, 4)
+           + gcov_block("File", str(tmp_path / "src" / "logic.cpp"), 0, 4))
+    assert srhigh.parse_gcov_output(out, tmp_path) == (0, 4, 0, 1)
+
+def test_gcov_filters_stl_and_gtest_functions(tmp_path: Path) -> None:
+    out = (gcov_block("Function", "_ZNSt6vectorIiE4sizeEv", 100, 1)
+           + gcov_block("Function", "testing::Test::Run", 100, 1)
+           + gcov_block("Function", "_Z3addii", 100, 1)
+           + gcov_block("File", str(tmp_path / "logic.cpp"), 100, 3))
+    assert srhigh.parse_gcov_output(out, tmp_path) == (3, 3, 1, 1)
+
+def test_resets_stale_coverage_counters(build_dir: Path) -> None:
+    """Old .gcda counters are deleted before the test runs, so stale coverage is never reported."""
+    obj_dir = build_dir / "src" / "CMakeFiles" / "node_a_logic.dir"
+    obj_dir.mkdir(parents=True)
+    stale = obj_dir / "logic.cpp.gcda"
+    stale.write_text("stale")
+    make_binary(build_dir, "test_node_a")
+    r = run("all", cwd=build_dir)
+    assert r.returncode == 0, r.stderr
+    assert not stale.exists()
