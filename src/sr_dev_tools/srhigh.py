@@ -11,12 +11,12 @@
 #   - analyse: runs Scitools Understand CodeCheck (MISRA C++) over the repo
 #   - pkg:     creates a new DDS package in the current working directory
 # Usage:
-#   - srhigh build all (--qnx=<toolchain-file> | --linux [--coverage] [--asan]) [-j N]
-#   - srhigh build target <node1> <node2>... (--qnx=<toolchain-file> | --linux [--coverage] [--asan]) [-j N]
+#   - srhigh build all (--qnx64 | --qnxarm | --linuxarm | --linux64 [--coverage] [--asan]) [-j N]
+#   - srhigh build target <node1> <node2>... (--qnx64 | --qnxarm | --linuxarm | --linux64 [--coverage] [--asan]) [-j N]
 #   - srhigh build clean
 #   - srhigh test all [--except <node>...] [-f <gtest filter>] [-o <report dir>]
 #   - srhigh test target <node1> <node2>... [-f <gtest filter>] [-o <report dir>]
-#   - srhigh analyse (--qnx | --linux)
+#   - srhigh analyse (--qnx64 | --qnxarm | --linux64 | --linuxarm)
 #   - srhigh pkg create <name>
 ###############################################################################
 
@@ -46,8 +46,16 @@ MARKER_FILE = ".sunswift-evsn"
 BUILD_FOLDER_NAME = "build"
 INSTALL_FOLDER_NAME = "deploy"
 
+TOOLCHAIN_FOLDER_NAME = "cmake"
+PLATFORM_TOOLCHAINS = {
+    "qnx64": "qnx64.toolchain.cmake",
+    "qnxarm": "qnxarm.toolchain.cmake",
+    "linux64": "linux64.toolchain.cmake",
+    "linuxarm": "linuxarm.toolchain.cmake",
+}
+
 # test
-TEST_PLATFORM = "linux"  # test binaries can only run natively on the host
+TEST_PLATFORM = "linux64"  # test binaries can only run natively on the host
 TEST_PREFIX = "test_"
 TEST_TIMEOUT_S = 30
 LOW_COVERAGE_PCT = 60.0
@@ -91,8 +99,8 @@ class BuildData:
     build_dir_path: Path
     install_prefix: Path
     cmakelists_path: Path
-    target_platform: str  # e.g. "qnx" or "linux"
-    toolchain_path: Optional[Path]  # absolute path to CMake toolchain file, or None for native
+    target_platform: str
+    toolchain_path: Path  # absolute path to CMake toolchain file
     coverage: bool = False  # passed to CMake as SR_ENABLE_COVERAGE
     asan: bool = False  # passed to CMake as SR_ENABLE_ASAN
 
@@ -155,16 +163,14 @@ def unused_cli_flag() -> str:
     version = (int(match[1]), int(match[2])) if match else (0, 0)
     return "-Wno-unused-cli" if version >= (4, 4) else "--no-warn-unused-cli"
 
-def make_build_data(build_root: Path, target_platform: str, toolchain_path: Optional[Path],
-                    coverage: bool = False, asan: bool = False) -> BuildData:
-    """Derive all build paths from the repo root and target platform."""
+def make_build_data(build_root: Path, target_platform: str, coverage: bool = False, asan: bool = False) -> BuildData:
     return BuildData(
         build_root=build_root,
         build_dir_path=build_root / BUILD_FOLDER_NAME / target_platform,
         install_prefix=build_root / INSTALL_FOLDER_NAME / target_platform,
         cmakelists_path=build_root / "CMakeLists.txt",
         target_platform=target_platform,
-        toolchain_path=toolchain_path,
+        toolchain_path=build_root / TOOLCHAIN_FOLDER_NAME / PLATFORM_TOOLCHAINS[target_platform],
         coverage=coverage,
         asan=asan,
     )
@@ -183,6 +189,8 @@ def configure_cmake(build_data: BuildData) -> None:
             f"Build: No CMakeLists.txt found at build root '{build_data.build_root}' "
             f"(the directory containing your {MARKER_FILE} marker)."
         )
+    if not build_data.toolchain_path.is_file():
+        die(f"Build: No toolchain file found at '{build_data.toolchain_path}'")
     if not build_data.build_dir_path.is_dir():
         logger.info("Build: Build directory not found, creating build directory")
         try:
@@ -200,10 +208,8 @@ def configure_cmake(build_data: BuildData) -> None:
         f"-DCMAKE_INSTALL_PREFIX={build_data.install_prefix}",
         f"-DSR_ENABLE_COVERAGE={on_off(build_data.coverage)}",
         f"-DSR_ENABLE_ASAN={on_off(build_data.asan)}",
+        f"-DCMAKE_TOOLCHAIN_FILE={build_data.toolchain_path}",
     ]
-
-    if build_data.toolchain_path is not None:
-        cmd.append(f"-DCMAKE_TOOLCHAIN_FILE={build_data.toolchain_path}")
 
     try:
         logger.info("Build: Initialising CMake")
@@ -473,7 +479,7 @@ def test(targets: Optional[list[str]], exceptions: list[str], build_root: Path,
     """
     build_dir_path = build_root / BUILD_FOLDER_NAME / TEST_PLATFORM
     if not build_dir_path.is_dir():
-        logger.error(f"Test: {build_dir_path} not found. Run 'srhigh build all --linux' before testing.")
+        logger.error(f"Test: {build_dir_path} not found. Run 'srhigh build all --{TEST_PLATFORM}' before testing.")
         return 1
 
     print_box("Testing Targets", width=60, ch="=")
@@ -851,6 +857,18 @@ def pkg_create(name: str) -> int:
 # CLI
 # =================================================================================================
 
+def add_platform_flags(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group(required=True)
+    descriptions = {
+        "qnx64": "x64 QNX",
+        "qnxarm": "Arm QNX",
+        "linux64": "x64 Linux",
+        "linuxarm": "Arm Linux",
+    }
+    for platform, desc in descriptions.items():
+        group.add_argument(f"--{platform}", dest="platform", action="store_const", const=platform,
+                           help=f"Target {platform}")
+
 def parse_args() -> argparse.Namespace:
     """Construct parser and return arguments."""
     parser = argparse.ArgumentParser(
@@ -861,11 +879,9 @@ def parse_args() -> argparse.Namespace:
     # srhigh build...
     build_common = argparse.ArgumentParser(add_help=False)
     build_common.add_argument("--jobs", "-j", default=8, type=int, help="Number of parallel jobs Make runs. Default=8")
-    build_platform = build_common.add_mutually_exclusive_group(required=True)
-    build_platform.add_argument("--qnx", metavar="TOOLCHAIN_FILE", help="Build QNX packages using the given CMake toolchain file (path relative to current working directory)")
-    build_platform.add_argument("--linux", action="store_true", help="Build Linux packages")
-    build_common.add_argument("--coverage", action="store_true", help="Instrument for gcov coverage, sets SR_ENABLE_COVERAGE=ON (Linux only)")
-    build_common.add_argument("--asan", action="store_true", help="Build with AddressSanitizer, sets SR_ENABLE_ASAN=ON (Linux only)")
+    add_platform_flags(build_common)
+    build_common.add_argument("--coverage", action="store_true", help=f"Instrument for gcov coverage, sets SR_ENABLE_COVERAGE=ON (--{TEST_PLATFORM} only)")
+    build_common.add_argument("--asan", action="store_true", help=f"Build with AddressSanitizer, sets SR_ENABLE_ASAN=ON (--{TEST_PLATFORM} only)")
 
     command_build = level1_junction.add_parser("build", help="Configure, build and install all or specific targets")
     build_sub = command_build.add_subparsers(dest="build_action", required=True)
@@ -888,9 +904,7 @@ def parse_args() -> argparse.Namespace:
 
     # srhigh analyse...
     command_analyse = level1_junction.add_parser("analyse", help="Run Scitools und CodeCheck (MISRA C++) over the repo")
-    analyse_platform = command_analyse.add_mutually_exclusive_group(required=True)
-    analyse_platform.add_argument("--qnx", action="store_true", help="Analyse the QNX build (build/qnx)")
-    analyse_platform.add_argument("--linux", action="store_true", help="Analyse the Linux build (build/linux)")
+    add_platform_flags(command_analyse)
 
     # srhigh pkg...
     command_pkg = level1_junction.add_parser("pkg", help="DDS package management. Packages are created in your current working directory")
@@ -899,8 +913,9 @@ def parse_args() -> argparse.Namespace:
     pkg_create_cmd.add_argument("name", help="Name of package to create (snake_case)")
 
     args = parser.parse_args()
-    if getattr(args, "qnx", None) and args.command == "build" and (args.coverage or args.asan):
-        parser.error("--coverage and --asan are Linux only, as unit tests only run on Linux")
+    if (args.command == "build" and args.build_action != "clean"
+            and args.platform != TEST_PLATFORM and (args.coverage or args.asan)):
+        parser.error(f"--coverage and --asan are --{TEST_PLATFORM} only, as unit tests only run on Linux x64")
     return args
 
 # =================================================================================================
@@ -922,10 +937,7 @@ def main() -> int:
         if args.build_action == "clean":
             failures = clean(repo_root)
         else:
-            if args.qnx:
-                build_data = make_build_data(repo_root, "qnx", (CWD / args.qnx).resolve())
-            else:
-                build_data = make_build_data(repo_root, "linux", None, args.coverage, args.asan)
+            build_data = make_build_data(repo_root, args.platform, args.coverage, args.asan)
             targets = None if args.build_action == "all" else args.targets
             failures = build(targets, args.jobs, build_data)
     elif args.command == "test":
@@ -934,8 +946,7 @@ def main() -> int:
         elif args.test_action == "target":
             failures = test(args.targets, [], repo_root, args.filter, args.output)
     elif args.command == "analyse":
-        target_platform = "qnx" if args.qnx else "linux"
-        failures = analyse(repo_root, repo_root / BUILD_FOLDER_NAME / target_platform)
+        failures = analyse(repo_root, repo_root / BUILD_FOLDER_NAME / args.platform)
 
     return 1 if failures else 0
 

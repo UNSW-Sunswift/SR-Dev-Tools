@@ -48,15 +48,15 @@ Build, test, analyse and create DDS packages in SR-Mjolnir and SR-Gungnir.
 ### Build
 
 ```bash
-srhigh build all --linux                     # build and install everything
-srhigh build target node1 node2 --linux      # build and install specific targets
-srhigh build all --qnx=cmake/qnx.cmake       # cross-compile with a toolchain file (relative to your CWD)
-srhigh build all --linux -j 16               # parallel jobs (default 8)
-srhigh build all --linux --coverage --asan   # test build with coverage and AddressSanitizer
+srhigh build all --linux64                     # build and install everything
+srhigh build target node1 node2 --linux64      # build and install specific targets
+srhigh build all --qnx64                       # cross-compile (uses cmake/qnx64.toolchain.cmake)
+srhigh build all --linux64 -j 16               # parallel jobs (default 8)
+srhigh build all --linux64 --coverage --asan   # test build with coverage and AddressSanitizer
 srhigh build clean                           # delete build/
 ```
 
-`--linux` or `--qnx=<toolchain>` is required for `all` and `target`. CMake files go to `build/<platform>/`, and installed binaries and params go to `deploy/<platform>/{bin,param}/`.
+One of `--linux64`, `--linuxarm`, `--qnx64`, `--qnxarm` is required for `all` and `target`, uwhich automatically looks for `cmake/<platform>.toolchain.cmake` in your repo root. CMake files go to `build/<platform>/`, and installed binaries and params go to `deploy/<platform>/{bin,param}/`.
 
 `--coverage` and `--asan` are for testing only, and Linux only. Without them you get a normal build, and you can switch between the two without a clean. They work in projects whose CMake reads `SR_ENABLE_COVERAGE` and `SR_ENABLE_ASAN`, such as SR-Gungnir's `cmake/SRTesting.cmake`.
 
@@ -70,7 +70,7 @@ srhigh test target pedal_box -f "*Parse*"    # GoogleTest filter
 srhigh test all -o build/test-results        # write gtest XML + summary.json
 ```
 
-Runs every `test_<node>` executable in `build/linux/` and prints pass/fail for each, with a 30 s timeout per binary. Build with `srhigh build all --linux` first.
+Runs every `test_<node>` executable in `build/linux64/` and prints pass/fail for each, with a 30 s timeout per binary. Build with `srhigh build all --linux64` first.
 
 - With a `--coverage` build, results also show line and function coverage, and nodes under 60% line coverage are flagged.
 - With an `--asan` build, a test with a memory bug (buffer overflow, use-after-free, double free, leak) fails, and its AddressSanitizer report shows where it happened. The test log says whether AddressSanitizer is on.
@@ -78,8 +78,9 @@ Runs every `test_<node>` executable in `build/linux/` and prints pass/fail for e
 ### Analyse
 
 ```bash
-srhigh analyse --linux                       # analyse build/linux
-srhigh analyse --qnx                         # analyse build/qnx
+srhigh analyse --linux64                       # analyse build/linux64
+srhigh analyse --qnx64                       # analyse build/qnx64
+# etc...
 ```
 
 Runs Understand `codecheck` (MISRA C++ 2023) on the files listed in `analyse.txt` at the repo root. Globs and `#` comments are allowed. It needs a licensed `und`, `misra-cpp2023.json` at the repo root, and `compile_commands.json` from `srhigh build`. Results go to `analysis/`.
@@ -216,11 +217,11 @@ srhigh pkg create my_dds_node
 # fill in my_dds_node/src, include/, and CMakeLists.txt
 
 cd path/to/your/project
-srhigh build target my_dds_node --linux
+srhigh build target my_dds_node --linux64
 # or
-srhigh build all --linux
+srhigh build all --linux64
 # add a test_my_dds_node GoogleTest executable, then:
-srhigh build target my_dds_node test_my_dds_node --linux
+srhigh build target my_dds_node test_my_dds_node --linux64
 srhigh test target my_dds_node
 ```
 SR-Amsvartnir:

@@ -33,23 +33,23 @@ def test_requires_platform_flag(repo: Path) -> None:
     assert r.returncode == 2
 
 def test_qnx_and_linux_mutually_exclusive(repo: Path) -> None:
-    r = run("--qnx", "--linux", cwd=repo)
+    r = run("--qnx64", "--linux64", cwd=repo)
     assert r.returncode == 2
 
 def test_fails_without_marker(tmp_path: Path) -> None:
-    r = run("--linux", cwd=tmp_path)
+    r = run("--linux64", cwd=tmp_path)
     assert r.returncode != 0
     assert "sunswift-evsn" in r.stderr
 
 def test_fails_without_und_config(repo: Path) -> None:
     (repo / "analyse.txt").write_text("src/*.cpp\n")
-    r = run("--linux", cwd=repo)
+    r = run("--linux64", cwd=repo)
     assert r.returncode == 1
     assert "misra-cpp2023.json" in r.stderr
 
 def test_fails_without_analyse_txt(repo: Path) -> None:
     (repo / "misra-cpp2023.json").write_text("{}")
-    r = run("--linux", cwd=repo)
+    r = run("--linux64", cwd=repo)
     assert r.returncode == 1
     assert "analyse.txt" in r.stderr
 

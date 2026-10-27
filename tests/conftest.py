@@ -10,6 +10,9 @@ def repo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def configured_repo(repo: Path) -> Path:
-    """Repo that passes all srhigh build sanity checks (has CMakeLists.txt)."""
+    """Repo that passes all srhigh build sanity checks (has CMakeLists.txt and the hardcoded toolchain files)."""
     (repo / "CMakeLists.txt").touch()
+    (repo / "cmake").mkdir()
+    for platform in ("qnx64", "qnxarm", "linux64", "linuxarm"):
+        (repo / "cmake" / f"{platform}.toolchain.cmake").touch()
     return repo
