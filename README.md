@@ -95,15 +95,20 @@ Creates a `snake_case` DDS package in your current directory:
 ```
 <package_name>/
 ├── .srpkg
-├── src/main.cpp                          # creates and spins the node
-├── src/<package_name>.cpp                # the SRNode class
-├── include/<package_name>.hpp
-├── src/<package_name>_logic.cpp          # testable logic, no DDS
-├── include/<package_name>_logic.hpp
-├── test/unit/test_<package_name>.cpp
-├── param/<package_name>_param.toml
 ├── CMakeLists.txt
-└── README.md
+├── README.md
+├── include/
+│   ├── <package_name>.hpp
+│   └── <package_name>_logic.hpp
+├── param/
+│   └── <package_name>_param.toml
+├── src/
+│   ├── main.cpp                    # creates and spins the node
+│   ├── <package_name>.cpp          # the SRNode class
+│   └── <package_name>_logic.cpp    # testable logic, no DDS
+└── test/
+    └── unit/
+        └── test_<package_name>.cpp
 ```
 
 It's ready for unit tests: put DDS-free logic in `<package_name>_logic`, and GoogleTest tests in `test/unit/`. `CMakeLists.txt` builds `test_<package_name>` whenever the project provides GoogleTest, so no CMake edits are needed.

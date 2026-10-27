@@ -124,3 +124,20 @@ def test_create_rejects_bad_name(tmp_path: Path) -> None:
     for bad in ["MyNode", "my-node", "my node", "my.node"]:
         r = run("create", bad, cwd=tmp_path)
         assert r.returncode != 0, f"Expected failure for name: {bad}"
+
+def test_create_main_catches_exceptions(tmp_path: Path) -> None:
+    """main() reports exceptions from the node and exits with an error instead of crashing."""
+    run("create", "my_node", cwd=tmp_path)
+    main = (tmp_path / "my_node" / "src" / "main.cpp").read_text()
+    assert "try {" in main
+    assert "catch (const std::exception& ex)" in main
+    assert "catch (...)" in main
+    assert 'std::cerr << "my_node exited with error: "' in main
+    assert "return 1;" in main
+
+def test_create_logic_library_lists_sources(tmp_path: Path) -> None:
+    """The logic library lists one source per line, with room to add more."""
+    run("create", "my_node", cwd=tmp_path)
+    cmake = (tmp_path / "my_node" / "CMakeLists.txt").read_text()
+    assert "add_library(${TARGET_NAME}_logic STATIC\n    src/${TARGET_NAME}_logic.cpp\n" in cmake
+    assert "# add more sources you want to test here" in cmake

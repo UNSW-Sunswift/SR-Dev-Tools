@@ -671,8 +671,11 @@ set (LIBS
 )
 set(PARAM_FILE param/{paths.pkg_name}_param.toml)
 
-# Testable logic, no DDS
-add_library(${{TARGET_NAME}}_logic STATIC src/${{TARGET_NAME}}_logic.cpp)
+# Testable logic only files, no DDS
+add_library(${{TARGET_NAME}}_logic STATIC
+    src/${{TARGET_NAME}}_logic.cpp
+    # add more sources you want to test here
+)
 target_include_directories(${{TARGET_NAME}}_logic PUBLIC ${{INCLUDE_DIRS}})
 
 # Compile and link
@@ -729,11 +732,22 @@ def gtest_suite_name(pkg_name: str) -> str:
 
 def fill_main(paths: PkgPaths) -> None:
     text = f"""// Starts the node. No need to edit
+#include <exception>
+#include <iostream>
 #include "{paths.pkg_name}.hpp"
 
 int main(int argc, char* argv[]) {{
-    {class_name(paths.pkg_name)} node;
-    node.spin();
+    try {{
+        {class_name(paths.pkg_name)} node;
+        node.spin();
+    }} catch (const std::exception& ex) {{
+        std::cerr << "{paths.pkg_name} exited with error: " << ex.what() << std::endl;
+        return 1;
+    }} catch (...) {{
+        std::cerr << "{paths.pkg_name} exited with unknown error" << std::endl;
+        return 1;
+    }}
+    return 0;
 }}
 """
     with (paths.abs_pkg_path / PKG_FILES["main"]).open("w") as file:
