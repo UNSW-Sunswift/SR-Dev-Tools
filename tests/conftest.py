@@ -1,4 +1,4 @@
-### This file contains pytest fixtures for the srpkg and srbuild tests.
+### This file contains pytest fixtures for the srhigh tests.
 import pytest
 from pathlib import Path
 
@@ -10,6 +10,6 @@ def repo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def configured_repo(repo: Path) -> Path:
-    """Repo that passes all srbuild sanity checks (has CMakeLists.txt)."""
+    """Repo that passes all srhigh build sanity checks (has CMakeLists.txt)."""
     (repo / "CMakeLists.txt").touch()
     return repo
