@@ -3,7 +3,7 @@
 # Author: Vipul Chiluvery
 #
 # Made to run automatically on CI. Tests srhigh test end to end by mocking a
-# build/linux directory full of fake GoogleTest binaries (shell scripts) and
+# build/linux64 directory full of fake GoogleTest binaries (shell scripts) and
 # running the CLI commands. Uses pytest. Requires the sr_dev_tools package to
 # be installed (editable install is fine).
 ###############################################################################
@@ -44,8 +44,8 @@ def args_of(binary: Path) -> str:
 
 @pytest.fixture
 def build_dir(repo: Path) -> Path:
-    """build/linux under a marked repo, which is where srhigh test looks for binaries."""
-    path = repo / "build" / "linux"
+    """build/linux64 under a marked repo, which is where srhigh test looks for binaries."""
+    path = repo / "build" / "linux64"
     path.mkdir(parents=True)
     return path
 
@@ -61,7 +61,7 @@ def test_fails_without_marker(tmp_path: Path) -> None:
     assert "sunswift-evsn" in r.stderr
 
 def test_fails_without_build_dir(repo: Path) -> None:
-    """Should tell the user to build first if build/linux doesn't exist."""
+    """Should tell the user to build first if build/linux64 doesn't exist."""
     r = run("all", cwd=repo)
     assert r.returncode != 0
     assert "srhigh build all --linux" in r.stderr
@@ -144,8 +144,8 @@ def test_runs_from_subdirectory(build_dir: Path, repo: Path) -> None:
     assert was_run(a)
 
 def test_ignores_qnx_build(repo: Path, build_dir: Path) -> None:
-    """QNX binaries can't run on the host, so build/qnx is never searched."""
-    qnx = make_binary(repo / "build" / "qnx", "test_node_a")
+    """QNX binaries can't run on the host, so build/qnx64 is never searched."""
+    qnx = make_binary(repo / "build" / "qnx64", "test_node_a")
     r = run("all", cwd=repo)
     assert r.returncode == 0, r.stderr
     assert not was_run(qnx)
@@ -288,7 +288,7 @@ def test_gcov_ignores_system_and_build_files(tmp_path: Path) -> None:
     out = (gcov_block("Function", "_ZNSt6vectorIiE4sizeEv", 100, 8)
            + gcov_block("File", "/usr/include/c++/v1/vector", 100, 8)
            + gcov_block("Function", "_Z3genv", 100, 5)
-           + gcov_block("File", str(tmp_path / "build" / "linux" / "gen.cpp"), 100, 5)
+           + gcov_block("File", str(tmp_path / "build" / "linux64" / "gen.cpp"), 100, 5)
            + gcov_block("Function", "_Z3addii", 0, 4)
            + gcov_block("File", str(tmp_path / "src" / "logic.cpp"), 0, 4))
     assert srhigh.parse_gcov_output(out, tmp_path) == (0, 4, 0, 1)
